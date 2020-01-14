@@ -539,6 +539,11 @@ listOfNewVariablesForVoronoiAnalysis = ['entropyByNeighborCount',
                                         'entropyByNeighborCountWeighted',
                                         'entropyByNeighborDistances', 
                                         'entropyByLocalDensities',
+                                        'samplingWindowSizes',
+                                        'entropyByNeighborCountInWindows',
+                                        'entropyByNeighborCountWeightedInWindows',
+                                        'entropyByNeighborDistancesInWindows',
+                                        'entropyByLocalDensitiesInWindows',
                                         'binEdgesNeighborCountWeighted', 
                                         'binEdgesNeighborDistances', 
                                         'binEdgesLocalDensities',
@@ -600,7 +605,7 @@ listOfNewVariablesForVelocityMSDAnalysis = ['embeddingDimension', 'reconstructio
                                             'particleMSD', 'particleMSDstd', 'particleRMSD']
 
 # dataID in the mainDataList corresponds to items in dataFileListExcludingPostProcessed
-for dataID in range(0,len(dataFileListExcludingPostProcessed)):
+for dataID in range(1,len(dataFileListExcludingPostProcessed)):
     ######################### load variables from mainDataList
     date = mainDataList[dataID]['date']
     batchNum = mainDataList[dataID]['batchNum']
@@ -619,7 +624,7 @@ for dataID in range(0,len(dataFileListExcludingPostProcessed)):
     
 #    outputDataFileName = date + '_' + str(numOfRafts) + 'Rafts_' + str(batchNum) + '_' + str(spinSpeed) + 'rps_' + str(magnification) + 'x_' + commentsSub 
 
-    shelveDataFileName = date + '_' + str(numOfRafts) + 'Rafts_' + str(batchNum) + '_' + str(spinSpeed) + 'rps_' + str(magnification) + 'x_' + 'gGx_postprocessed' + str(analysisType)
+    shelveDataFileName = date + '_' + str(numOfRafts) + 'Rafts_' + str(batchNum) + '_' + str(spinSpeed) + 'rps_' + str(magnification) + 'x_' + 'postprocessed' + str(analysisType)
     
     shelveDataFileExist = glob.glob(shelveDataFileName+'.dat') # empty list is false
     
@@ -726,6 +731,14 @@ for dataID in range(0,len(dataFileListExcludingPostProcessed)):
         
         ########################### voronoi analysis
         if analysisType == 2 or analysisType == 4 or analysisType == 5:
+            deltaR = 1
+            sizeOfArenaInRadius = 15000/150 # 1.5cm square arena, 150 um raft radius
+            radialRangeArray = np.arange(2, 100, deltaR)
+            
+            samplingWindowStep = 2
+            samplingWindowSizes = np.arange(5, np.floor(sizeOfArenaInRadius/2)*1.5, samplingWindowStep)
+            samplingWindowCount = len(samplingWindowSizes)
+            
             entropyByNeighborCount = np.zeros(numOfFrames)
             entropyByNeighborCountWeighted = np.zeros(numOfFrames)
             entropyByNeighborDistances = np.zeros(numOfFrames)
@@ -733,13 +746,14 @@ for dataID in range(0,len(dataFileListExcludingPostProcessed)):
             neighborDistanceAvgAllRafts = np.zeros(numOfFrames)
             neighborDistanceWeightedAvgAllRafts = np.zeros(numOfFrames)
             
+            entropyByNeighborCountInWindows = np.zeros((numOfFrames, samplingWindowCount))
+            entropyByNeighborCountWeightedInWindows = np.zeros((numOfFrames, samplingWindowCount))
+            entropyByNeighborDistancesInWindows = np.zeros((numOfFrames, samplingWindowCount))
+            entropyByLocalDensitiesInWindows = np.zeros((numOfFrames, samplingWindowCount))
+            
             binEdgesNeighborCountWeighted = np.arange(1, 7, 1).tolist()
             binEdgesNeighborDistances = np.arange(2,10,0.5).tolist() + [100]
             binEdgesLocalDensities = np.arange(0,1,0.05).tolist()
-            
-            deltaR = 1
-            sizeOfArenaInRadius = 10000/150 # 1cm square arena, 150 um raft radius
-            radialRangeArray = np.arange(2, 100, deltaR)
             
             hexaticOrderParameterAvgs = np.zeros(numOfFrames, dtype = np.csingle)
             hexaticOrderParameterAvgNorms = np.zeros(numOfFrames)
@@ -769,7 +783,7 @@ for dataID in range(0,len(dataFileListExcludingPostProcessed)):
             
             spatialCorrPos = np.zeros((numOfFrames, len(radialRangeArray))) # spatial correlation of positions: gG(r)
             
-            dfNeighbors = pd.DataFrame(columns = ['frameNum', 'raftID', 'localDensity', 
+            dfNeighbors = pd.DataFrame(columns = ['frameNum', 'raftID', 'raftOrbitingDistInR','localDensity', 
                                                   'hexaticOrderParameter', 'pentaticOrderParameter',
                                                   'tetraticOrderParameter', 'neighborCount', 
                                                   'neighborCountWeighted',
@@ -781,7 +795,7 @@ for dataID in range(0,len(dataFileListExcludingPostProcessed)):
                                                   'ridgeLengthsScaledNormalizedBySum',
                                                   'ridgeLengthsScaledNormalizedByMax'])
             
-            dfNeighborsAllFrames = pd.DataFrame(columns = ['frameNum', 'raftID', 'localDensity',
+            dfNeighborsAllFrames = pd.DataFrame(columns = ['frameNum', 'raftID', 'raftOrbitingDistInR', 'localDensity',
                                                            'hexaticOrderParameter', 'pentaticOrderParameter',
                                                            'tetraticOrderParameter', 'neighborCount', 
                                                            'neighborCountWeighted',
@@ -814,6 +828,7 @@ for dataID in range(0,len(dataFileListExcludingPostProcessed)):
                     
                     ## order parameters and their spatial correlation function
                     raftLocation = raftLocations[raftID,currentFrameNum,:]
+                    raftOrbitingDistInR = raftOrbitingDistances[raftID, currentFrameNum] / radius # unit: R
                     neighborLocations = raftLocations[neighborsOfOneRaft,currentFrameNum,:]
                     
                     # note the negative sign, it is to make the angle Rhino-like
@@ -876,6 +891,7 @@ for dataID in range(0,len(dataFileListExcludingPostProcessed)):
                     
                     dfNeighbors.loc[raftID, 'frameNum'] = currentFrameNum
                     dfNeighbors.loc[raftID, 'raftID'] = raftID
+                    dfNeighbors.loc[raftID, 'raftOrbitingDistInR'] = raftOrbitingDistInR
                     dfNeighbors.loc[raftID, 'hexaticOrderParameter'] = raftHexaticOrderParameter
                     dfNeighbors.loc[raftID, 'pentaticOrderParameter'] = raftPentaticOrderParameter
                     dfNeighbors.loc[raftID, 'tetraticOrderParameter'] = raftTetraticOrderParameter
@@ -893,91 +909,92 @@ for dataID in range(0,len(dataFileListExcludingPostProcessed)):
                     dfNeighbors.loc[raftID, 'ridgeLengthsScaledNormalizedBySum'] = ridgeLengthsScaledNormalizedBySum
                     dfNeighbors.loc[raftID, 'ridgeLengthsScaledNormalizedByMax'] = ridgeLengthsScaledNormalizedByMax
                     
-                
-                hexaticOrderParameterList =  dfNeighbors['hexaticOrderParameter'].tolist()
-                pentaticOrderParameterList =  dfNeighbors['pentaticOrderParameter'].tolist()
-                tetraticOrderParameterList =  dfNeighbors['tetraticOrderParameter'].tolist()
+                 
+#                hexaticOrderParameterList =  dfNeighbors['hexaticOrderParameter'].tolist()
+#                pentaticOrderParameterList =  dfNeighbors['pentaticOrderParameter'].tolist()
+#                tetraticOrderParameterList =  dfNeighbors['tetraticOrderParameter'].tolist()
+#                
+#                
+#                hexaticOrderParameterArray = np.array(hexaticOrderParameterList)
+#                hexaticOrderParameterAvgs[currentFrameNum] = hexaticOrderParameterArray.mean()
+#                hexaticOrderParameterAvgNorms[currentFrameNum] = np.sqrt(hexaticOrderParameterAvgs[currentFrameNum].real ** 2 + hexaticOrderParameterAvgs[currentFrameNum].imag ** 2)
+#                hexaticOrderParameterMeanSquaredDeviations[currentFrameNum] = ((hexaticOrderParameterArray - hexaticOrderParameterAvgs[currentFrameNum]) ** 2).mean()
+#                hexaticOrderParameterMolulii = np.absolute(hexaticOrderParameterArray)
+#                hexaticOrderParameterModuliiAvgs[currentFrameNum] = hexaticOrderParameterMolulii.mean()
+#                hexaticOrderParameterModuliiStds[currentFrameNum] = hexaticOrderParameterMolulii.std()
+#                
+#                pentaticOrderParameterArray = np.array(pentaticOrderParameterList)
+#                pentaticOrderParameterAvgs[currentFrameNum] = pentaticOrderParameterArray.mean()
+#                pentaticOrderParameterAvgNorms[currentFrameNum] = np.sqrt(pentaticOrderParameterAvgs[currentFrameNum].real ** 2 + pentaticOrderParameterAvgs[currentFrameNum].imag ** 2)
+#                pentaticOrderParameterMeanSquaredDeviations[currentFrameNum] = ((pentaticOrderParameterArray - pentaticOrderParameterAvgs[currentFrameNum]) ** 2).mean()
+#                pentaticOrderParameterModulii = np.absolute(pentaticOrderParameterArray)
+#                pentaticOrderParameterModuliiAvgs[currentFrameNum] = pentaticOrderParameterModulii.mean()
+#                pentaticOrderParameterModuliiStds[currentFrameNum] = pentaticOrderParameterModulii.std()
+#                
+#                tetraticOrderParameterArray = np.array(tetraticOrderParameterList)
+#                tetraticOrderParameterAvgs[currentFrameNum] = tetraticOrderParameterArray.mean()
+#                tetraticOrderParameterAvgNorms[currentFrameNum] = np.sqrt(tetraticOrderParameterAvgs[currentFrameNum].real ** 2 + tetraticOrderParameterAvgs[currentFrameNum].imag ** 2)
+#                tetraticOrderParameterMeanSquaredDeviations[currentFrameNum] = ((tetraticOrderParameterArray - tetraticOrderParameterAvgs[currentFrameNum]) ** 2).mean()
+#                tetraticOrderParameterModulii = np.absolute(tetraticOrderParameterArray)
+#                tetraticOrderParameterModuliiAvgs[currentFrameNum] = tetraticOrderParameterModulii.mean()
+#                tetraticOrderParameterModuliiStds[currentFrameNum] = tetraticOrderParameterModulii.std()
+#                
+#                angles = np.arange(0,2*np.pi, np.pi/3) + np.pi/6 #+ np.angle(hexaticOrderParameterAvgs[currentFrameNum]) #0
+#                neighborDistancesList = np.concatenate(dfNeighbors['neighborDistances'].tolist())
+#                NDistAvg = np.asarray(neighborDistancesList).mean() #np.asarray(neighborDistancesList).mean() # in unit of R
+#                G = 2 * np.pi * np.array((np.cos(angles), np.sin(angles))).T / NDistAvg # np.asarray(neighborDistancesList).mean()
+#                cosPart = np.zeros((len(radialRangeArray), numOfRafts, len(angles)))
+#                cosPartRaftCount = np.zeros(len(radialRangeArray))
+##                tempCount = np.zeros(len(radialRangeArray))
+#
+#                ## g(r) and g6(r), gG(r) for this frame
+#                for radialIndex, radialIntervalStart in enumerate(radialRangeArray): 
+#                    # radialIntervalStart, radialIndex = 2, 0
+#                    radialIntervalEnd =  radialIntervalStart + deltaR
+#                    #g(r)
+#                    js, ks = np.logical_and(raftPairwiseDistancesMatrix>=radialIntervalStart, raftPairwiseDistancesMatrix<radialIntervalEnd).nonzero()
+#                    count = len(js)
+#                    density = numOfRafts / sizeOfArenaInRadius**2 
+#                    radialDistributionFunction[currentFrameNum, radialIndex] =  count / (2 * np.pi * radialIntervalStart * deltaR * density * (numOfRafts-1))
+#                    
+#                    #gG(r_)                  
+#                    for raft1ID in np.arange(numOfRafts):
+#                        # raft1ID = 0
+#                        originXY = raftLocations[raft1ID, currentFrameNum, :] / raftRadii.mean()
+#                        raftLocationsNew = raftLocations[:,currentFrameNum,:] / raftRadii.mean() - originXY
+#                        for angleID, angle in enumerate(angles):
+#                            # angleID, angle = 0, np.angle(hexaticOrderParameterAvgs[currentFrameNum])
+#                            conditionX = np.logical_and(raftLocationsNew[:,0] >= radialIntervalStart * np.cos(angle) - NDistAvg/2, raftLocationsNew[:,0] < radialIntervalStart * np.cos(angle) + NDistAvg/2)
+#                            conditionY = np.logical_and(raftLocationsNew[:,1] >= radialIntervalStart * np.sin(angle) - NDistAvg/2, raftLocationsNew[:,1] < radialIntervalStart * np.sin(angle) + NDistAvg/2)
+#                            conditionXY = np.logical_and(conditionX, conditionY)
+#                            if conditionXY.any():          
+#                                vector12 = raftLocationsNew[conditionXY.nonzero()]
+#                                cosPart[radialIndex, raft1ID, angleID] = np.cos(G[angleID, 0] * vector12[:, 0] + G[angleID, 1] * vector12[:,1]).sum()
+#                                cosPartRaftCount[radialIndex] = cosPartRaftCount[radialIndex] + np.count_nonzero(conditionXY)
+#                    if np.count_nonzero(cosPart[radialIndex, :, :]) > 0: 
+##                        tempCount[radialIndex] = np.count_nonzero(cosPart[radialIndex, :, :])
+#                        spatialCorrPos[currentFrameNum, radialIndex] = cosPart[radialIndex, :, :].sum() / cosPartRaftCount[radialIndex]     
+#                    
+#
+#                    # g6(r), g5(r), g4(r)
+#                    sumOfProductsOfPsi6 = (hexaticOrderParameterArray[js] * np.conjugate(hexaticOrderParameterArray[ks])).sum().real
+#                    spatialCorrHexaOrderPara[currentFrameNum, radialIndex] = sumOfProductsOfPsi6 / (2 * np.pi * radialIntervalStart * deltaR * density * (numOfRafts-1))
+#                    sumOfProductsOfPsi5 = (pentaticOrderParameterArray[js] * np.conjugate(pentaticOrderParameterArray[ks])).sum().real
+#                    spatialCorrPentaOrderPara[currentFrameNum, radialIndex] = sumOfProductsOfPsi5 / (2 * np.pi * radialIntervalStart * deltaR * density * (numOfRafts-1))
+#                    sumOfProductsOfPsi4 = (tetraticOrderParameterArray[js] * np.conjugate(tetraticOrderParameterArray[ks])).sum().real
+#                    spatialCorrTetraOrderPara[currentFrameNum, radialIndex] = sumOfProductsOfPsi4 / (2 * np.pi * radialIntervalStart * deltaR * density * (numOfRafts-1))
+#                    # g6(r)/g(r); g5(r)/g(r); g4(r)/g(r)
+#                    if radialDistributionFunction[currentFrameNum, radialIndex] != 0: 
+#                        spatialCorrHexaBondOrientationOrder[currentFrameNum, radialIndex] = spatialCorrHexaOrderPara[currentFrameNum, radialIndex] / radialDistributionFunction[currentFrameNum, radialIndex]
+#                        spatialCorrPentaBondOrientationOrder[currentFrameNum, radialIndex] = spatialCorrPentaOrderPara[currentFrameNum, radialIndex] / radialDistributionFunction[currentFrameNum, radialIndex]
+#                        spatialCorrTetraBondOrientationOrder[currentFrameNum, radialIndex] = spatialCorrTetraOrderPara[currentFrameNum, radialIndex] / radialDistributionFunction[currentFrameNum, radialIndex]
+#             
+                #calculate various entropies and entropies within windows of different sizes
                 neighborCountSeries = dfNeighbors['neighborCount']
                 neighborCountWeightedList = dfNeighbors['neighborCountWeighted'].tolist()
                 neighborDistancesList = np.concatenate(dfNeighbors['neighborDistances'].tolist())
                 localDensitiesList = dfNeighbors['localDensity'].tolist()
                 
-                hexaticOrderParameterArray = np.array(hexaticOrderParameterList)
-                hexaticOrderParameterAvgs[currentFrameNum] = hexaticOrderParameterArray.mean()
-                hexaticOrderParameterAvgNorms[currentFrameNum] = np.sqrt(hexaticOrderParameterAvgs[currentFrameNum].real ** 2 + hexaticOrderParameterAvgs[currentFrameNum].imag ** 2)
-                hexaticOrderParameterMeanSquaredDeviations[currentFrameNum] = ((hexaticOrderParameterArray - hexaticOrderParameterAvgs[currentFrameNum]) ** 2).mean()
-                hexaticOrderParameterMolulii = np.absolute(hexaticOrderParameterArray)
-                hexaticOrderParameterModuliiAvgs[currentFrameNum] = hexaticOrderParameterMolulii.mean()
-                hexaticOrderParameterModuliiStds[currentFrameNum] = hexaticOrderParameterMolulii.std()
-                
-                pentaticOrderParameterArray = np.array(pentaticOrderParameterList)
-                pentaticOrderParameterAvgs[currentFrameNum] = pentaticOrderParameterArray.mean()
-                pentaticOrderParameterAvgNorms[currentFrameNum] = np.sqrt(pentaticOrderParameterAvgs[currentFrameNum].real ** 2 + pentaticOrderParameterAvgs[currentFrameNum].imag ** 2)
-                pentaticOrderParameterMeanSquaredDeviations[currentFrameNum] = ((pentaticOrderParameterArray - pentaticOrderParameterAvgs[currentFrameNum]) ** 2).mean()
-                pentaticOrderParameterModulii = np.absolute(pentaticOrderParameterArray)
-                pentaticOrderParameterModuliiAvgs[currentFrameNum] = pentaticOrderParameterModulii.mean()
-                pentaticOrderParameterModuliiStds[currentFrameNum] = pentaticOrderParameterModulii.std()
-                
-                tetraticOrderParameterArray = np.array(tetraticOrderParameterList)
-                tetraticOrderParameterAvgs[currentFrameNum] = tetraticOrderParameterArray.mean()
-                tetraticOrderParameterAvgNorms[currentFrameNum] = np.sqrt(tetraticOrderParameterAvgs[currentFrameNum].real ** 2 + tetraticOrderParameterAvgs[currentFrameNum].imag ** 2)
-                tetraticOrderParameterMeanSquaredDeviations[currentFrameNum] = ((tetraticOrderParameterArray - tetraticOrderParameterAvgs[currentFrameNum]) ** 2).mean()
-                tetraticOrderParameterModulii = np.absolute(tetraticOrderParameterArray)
-                tetraticOrderParameterModuliiAvgs[currentFrameNum] = tetraticOrderParameterModulii.mean()
-                tetraticOrderParameterModuliiStds[currentFrameNum] = tetraticOrderParameterModulii.std()
-                
-                angles = np.arange(0,2*np.pi, np.pi/3) + np.pi/6 #+ np.angle(hexaticOrderParameterAvgs[currentFrameNum]) #0
-                NDistAvg = np.asarray(neighborDistancesList).mean() #np.asarray(neighborDistancesList).mean() # in unit of R
-                G = 2 * np.pi * np.array((np.cos(angles), np.sin(angles))).T / NDistAvg # np.asarray(neighborDistancesList).mean()
-                cosPart = np.zeros((len(radialRangeArray), numOfRafts, len(angles)))
-                cosPartRaftCount = np.zeros(len(radialRangeArray))
-#                tempCount = np.zeros(len(radialRangeArray))
-
-                ## g(r) and g6(r), gG(r) for this frame
-                for radialIndex, radialIntervalStart in enumerate(radialRangeArray): 
-                    # radialIntervalStart, radialIndex = 2, 0
-                    radialIntervalEnd =  radialIntervalStart + deltaR
-                    #g(r)
-                    js, ks = np.logical_and(raftPairwiseDistancesMatrix>=radialIntervalStart, raftPairwiseDistancesMatrix<radialIntervalEnd).nonzero()
-                    count = len(js)
-                    density = numOfRafts / sizeOfArenaInRadius**2 
-                    radialDistributionFunction[currentFrameNum, radialIndex] =  count / (2 * np.pi * radialIntervalStart * deltaR * density * (numOfRafts-1))
-                    
-                    #gG(r_)                  
-                    for raft1ID in np.arange(numOfRafts):
-                        # raft1ID = 0
-                        originXY = raftLocations[raft1ID, currentFrameNum, :] / raftRadii.mean()
-                        raftLocationsNew = raftLocations[:,currentFrameNum,:] / raftRadii.mean() - originXY
-                        for angleID, angle in enumerate(angles):
-                            # angleID, angle = 0, np.angle(hexaticOrderParameterAvgs[currentFrameNum])
-                            conditionX = np.logical_and(raftLocationsNew[:,0] >= radialIntervalStart * np.cos(angle) - NDistAvg/2, raftLocationsNew[:,0] < radialIntervalStart * np.cos(angle) + NDistAvg/2)
-                            conditionY = np.logical_and(raftLocationsNew[:,1] >= radialIntervalStart * np.sin(angle) - NDistAvg/2, raftLocationsNew[:,1] < radialIntervalStart * np.sin(angle) + NDistAvg/2)
-                            conditionXY = np.logical_and(conditionX, conditionY)
-                            if conditionXY.any():          
-                                vector12 = raftLocationsNew[conditionXY.nonzero()]
-                                cosPart[radialIndex, raft1ID, angleID] = np.cos(G[angleID, 0] * vector12[:, 0] + G[angleID, 1] * vector12[:,1]).sum()
-                                cosPartRaftCount[radialIndex] = cosPartRaftCount[radialIndex] + np.count_nonzero(conditionXY)
-                    if np.count_nonzero(cosPart[radialIndex, :, :]) > 0: 
-#                        tempCount[radialIndex] = np.count_nonzero(cosPart[radialIndex, :, :])
-                        spatialCorrPos[currentFrameNum, radialIndex] = cosPart[radialIndex, :, :].sum() / cosPartRaftCount[radialIndex]     
-                    
-
-                    
-                    
-                    # g6(r), g5(r), g4(r)
-                    sumOfProductsOfPsi6 = (hexaticOrderParameterArray[js] * np.conjugate(hexaticOrderParameterArray[ks])).sum().real
-                    spatialCorrHexaOrderPara[currentFrameNum, radialIndex] = sumOfProductsOfPsi6 / (2 * np.pi * radialIntervalStart * deltaR * density * (numOfRafts-1))
-                    sumOfProductsOfPsi5 = (pentaticOrderParameterArray[js] * np.conjugate(pentaticOrderParameterArray[ks])).sum().real
-                    spatialCorrPentaOrderPara[currentFrameNum, radialIndex] = sumOfProductsOfPsi5 / (2 * np.pi * radialIntervalStart * deltaR * density * (numOfRafts-1))
-                    sumOfProductsOfPsi4 = (tetraticOrderParameterArray[js] * np.conjugate(tetraticOrderParameterArray[ks])).sum().real
-                    spatialCorrTetraOrderPara[currentFrameNum, radialIndex] = sumOfProductsOfPsi4 / (2 * np.pi * radialIntervalStart * deltaR * density * (numOfRafts-1))
-                    # g6(r)/g(r); g5(r)/g(r); g4(r)/g(r)
-                    if radialDistributionFunction[currentFrameNum, radialIndex] != 0: 
-                        spatialCorrHexaBondOrientationOrder[currentFrameNum, radialIndex] = spatialCorrHexaOrderPara[currentFrameNum, radialIndex] / radialDistributionFunction[currentFrameNum, radialIndex]
-                        spatialCorrPentaBondOrientationOrder[currentFrameNum, radialIndex] = spatialCorrPentaOrderPara[currentFrameNum, radialIndex] / radialDistributionFunction[currentFrameNum, radialIndex]
-                        spatialCorrTetraBondOrientationOrder[currentFrameNum, radialIndex] = spatialCorrTetraOrderPara[currentFrameNum, radialIndex] / radialDistributionFunction[currentFrameNum, radialIndex]
-    
-                        
                 count1 = np.asarray(neighborCountSeries.value_counts())
                 entropyByNeighborCount[currentFrameNum] = ShannonEntropy(count1)
                 
@@ -990,13 +1007,33 @@ for dataID in range(0,len(dataFileListExcludingPostProcessed)):
                 count4, _ = np.histogram(np.asarray(localDensitiesList), binEdgesLocalDensities)
                 entropyByLocalDensities[currentFrameNum] = ShannonEntropy(count4)
                 
+                for windowID, samplingWindowRadius in enumerate(samplingWindowSizes):
+                    dfRaftsInWindow = dfNeighbors[dfNeighbors.raftOrbitingDistInR <= samplingWindowRadius]
+                    
+                    neighborCountSeries = dfRaftsInWindow['neighborCount']
+                    count1 = np.asarray(neighborCountSeries.value_counts())
+                    entropyByNeighborCountInWindows[currentFrameNum, windowID] = ShannonEntropy(count1)
+                    
+                    neighborCountWeightedList = dfRaftsInWindow['neighborCountWeighted'].tolist()
+                    count2, _ = np.histogram(np.asarray(neighborCountWeightedList),binEdgesNeighborCountWeighted)
+                    entropyByNeighborCountWeightedInWindows[currentFrameNum, windowID] = ShannonEntropy(count2)
+                    
+                    neighborDistancesList = np.concatenate(dfRaftsInWindow['neighborDistances'].tolist())
+                    count3, _ = np.histogram(np.asarray(neighborDistancesList), binEdgesNeighborDistances)
+                    entropyByNeighborDistancesInWindows[currentFrameNum, windowID] = ShannonEntropy(count3)
+                    
+                    localDensitiesList = dfRaftsInWindow['localDensity'].tolist()
+                    count4, _ = np.histogram(np.asarray(localDensitiesList), binEdgesLocalDensities)
+                    entropyByLocalDensitiesInWindows[currentFrameNum, windowID] = ShannonEntropy(count4)
+                    
+
                 neighborDistanceAvgAllRafts[currentFrameNum] = dfNeighbors['neighborDistanceAvg'].mean()
                 neighborDistanceWeightedAvgAllRafts[currentFrameNum] = dfNeighbors['neighborDistanceWeightedAvg'].mean()
                 
-                dfNeighborsAllFrames = dfNeighborsAllFrames.append(dfNeighbors,ignore_index=True)
+#                dfNeighborsAllFrames = dfNeighborsAllFrames.append(dfNeighbors,ignore_index=True)
             
-            dfNeighborsAllFrames = dfNeighborsAllFrames.infer_objects()
-            dfNeighborsAllFrames = dfNeighborsAllFrames.sort_values(['frameNum','raftID'], ascending = [1,1])
+#            dfNeighborsAllFrames = dfNeighborsAllFrames.infer_objects()
+#            dfNeighborsAllFrames = dfNeighborsAllFrames.sort_values(['frameNum','raftID'], ascending = [1,1])
             
       
             
@@ -1582,7 +1619,7 @@ outputDataFileName = date + '_' + str(numOfRafts) + 'Rafts_' + str(batchNum) + '
 
 #%% load all variables from postprocessed file corresponding to the specific experiment above
 
-analysisType = 5 # 1: cluster, 2: cluster+Voronoi, 3: MI, 4: cluster+Voronoi+MI, 5: velocity/MSD + cluster + Voronoi
+analysisType = 2 # 1: cluster, 2: cluster+Voronoi, 3: MI, 4: cluster+Voronoi+MI, 5: velocity/MSD + cluster + Voronoi
 
 shelveDataFileName = date + '_' + str(numOfRafts) + 'Rafts_' + str(batchNum) + '_' + str(spinSpeed) + 'rps_' + str(magnification) + 'x_' + 'postprocessed' + str(analysisType)
 
@@ -1601,6 +1638,57 @@ if shelveDataFileExist:
     
 elif len(shelveDataFileExist) == 0:
     print(shelveDataFileName + ' does not exist')
+
+
+#%% extracting entropies of various window sizes and plotting
+dfEntropyNeighborDistTimeByWindowSizes = pd.DataFrame(columns = ['timeDifferenceInSeconds'])
+dfEntropyNeighborCountTimeByWindowSizes = pd.DataFrame(columns = ['timeDifferenceInSeconds'])
+dfEntropyLocalDensitiesTimeByWindowSizes = pd.DataFrame(columns = ['timeDifferenceInSeconds'])
+dfEntropyByWindowSizesSummary = pd.DataFrame(columns = ['windowSizes', 'entropyNeighborDist_mean', 'entropyNeighborDist_std', 
+                                                        'entropyNeighborCount_mean', 'entropyNeighborCount_std',
+                                                        'entropyLocalDensities_mean', 'entropyLocalDensities_std'])
+
+frameRate = 75 # unit fps, check this every time
+timeDifferenceArray = np.arange(numOfFrames) / frameRate #unit: s
+dfEntropyNeighborDistTimeByWindowSizes['timeDifferenceInSeconds'] = timeDifferenceArray
+dfEntropyNeighborCountTimeByWindowSizes['timeDifferenceInSeconds'] = timeDifferenceArray
+dfEntropyLocalDensitiesTimeByWindowSizes['timeDifferenceInSeconds'] = timeDifferenceArray
+
+dfEntropyByWindowSizesSummary['windowSizes'] = samplingWindowSizes
+
+for windowID, samplingWindowRadius in enumerate(samplingWindowSizes):
+    columnName = 'WindowSize_' + str(samplingWindowRadius) + 'R'
+    dfEntropyNeighborDistTimeByWindowSizes[columnName] = entropyByNeighborDistancesInWindows[:, windowID]
+    dfEntropyNeighborCountTimeByWindowSizes[columnName] = entropyByNeighborCountInWindows[:, windowID]
+    dfEntropyLocalDensitiesTimeByWindowSizes[columnName] = entropyByLocalDensitiesInWindows[:, windowID]
+    dfEntropyByWindowSizesSummary.loc[windowID, 'entropyNeighborDist_mean'] = entropyByNeighborDistancesInWindows[:, windowID].mean()
+    dfEntropyByWindowSizesSummary.loc[windowID, 'entropyNeighborDist_std'] = entropyByNeighborDistancesInWindows[:, windowID].std()
+    dfEntropyByWindowSizesSummary.loc[windowID, 'entropyNeighborCount_mean'] = entropyByNeighborCountInWindows[:, windowID].mean()
+    dfEntropyByWindowSizesSummary.loc[windowID, 'entropyNeighborCount_std'] = entropyByNeighborCountInWindows[:, windowID].std()
+    dfEntropyByWindowSizesSummary.loc[windowID, 'entropyLocalDensities_mean'] = entropyByLocalDensitiesInWindows[:, windowID].mean()
+    dfEntropyByWindowSizesSummary.loc[windowID, 'entropyLocalDensities_std'] = entropyByLocalDensitiesInWindows[:, windowID].std()
+
+
+dfEntropyByWindowSizesSummary = dfEntropyByWindowSizesSummary.infer_objects()
+dfEntropyNeighborDistTimeByWindowSizes = dfEntropyNeighborDistTimeByWindowSizes.infer_objects()
+dfEntropyNeighborCountTimeByWindowSizes = dfEntropyNeighborCountTimeByWindowSizes.infer_objects()
+dfEntropyLocalDensitiesTimeByWindowSizes = dfEntropyLocalDensitiesTimeByWindowSizes.infer_objects()
+
+
+dataFileName = shelveDataFileName
+dfEntropyByWindowSizesSummary.to_csv(dataFileName + '_summary.csv', index = False)
+dfEntropyNeighborDistTimeByWindowSizes.to_csv(dataFileName + '_neighborDist.csv',index = False)
+dfEntropyNeighborCountTimeByWindowSizes.to_csv(dataFileName + '_neighborCount.csv',index = False)
+dfEntropyLocalDensitiesTimeByWindowSizes.to_csv(dataFileName + '_localDensities.csv',index = False)
+
+
+dfEntropyByWindowSizesSummary.plot(x = 'windowSizes', y = 'entropyNeighborDist_mean')
+dfEntropyByWindowSizesSummary.plot(x = 'windowSizes', y = 'entropyNeighborDist_std')
+dfEntropyByWindowSizesSummary.plot(x = 'windowSizes', y = 'entropyNeighborCount_mean')
+dfEntropyByWindowSizesSummary.plot(x = 'windowSizes', y = 'entropyNeighborCount_std')
+dfEntropyByWindowSizesSummary.plot(x = 'windowSizes', y = 'entropyLocalDensities_mean')
+dfEntropyByWindowSizesSummary.plot(x = 'windowSizes', y = 'entropyLocalDensities_std')
+
 
 
 #%%Kinetic Energy calculation (Gaurav)
