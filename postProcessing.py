@@ -540,6 +540,7 @@ listOfNewVariablesForVoronoiAnalysis = ['entropyByNeighborCount',
                                         'entropyByNeighborDistances', 
                                         'entropyByLocalDensities',
                                         'samplingWindowSizes',
+                                        'numOfRaftsInSamplingWindows',
                                         'entropyByNeighborCountInWindows',
                                         'entropyByNeighborCountWeightedInWindows',
                                         'entropyByNeighborDistancesInWindows',
@@ -746,6 +747,7 @@ for dataID in range(1,len(dataFileListExcludingPostProcessed)):
             neighborDistanceAvgAllRafts = np.zeros(numOfFrames)
             neighborDistanceWeightedAvgAllRafts = np.zeros(numOfFrames)
             
+            numOfRaftsInSamplingWindows = np.zeros((numOfFrames, samplingWindowCount))
             entropyByNeighborCountInWindows = np.zeros((numOfFrames, samplingWindowCount))
             entropyByNeighborCountWeightedInWindows = np.zeros((numOfFrames, samplingWindowCount))
             entropyByNeighborDistancesInWindows = np.zeros((numOfFrames, samplingWindowCount))
@@ -1009,6 +1011,7 @@ for dataID in range(1,len(dataFileListExcludingPostProcessed)):
                 
                 for windowID, samplingWindowRadius in enumerate(samplingWindowSizes):
                     dfRaftsInWindow = dfNeighbors[dfNeighbors.raftOrbitingDistInR <= samplingWindowRadius]
+                    numOfRaftsInSamplingWindows[currentFrameNum, windowID] = len(dfRaftsInWindow.index)
                     
                     neighborCountSeries = dfRaftsInWindow['neighborCount']
                     count1 = np.asarray(neighborCountSeries.value_counts())
@@ -1045,42 +1048,42 @@ for dataID in range(1,len(dataFileListExcludingPostProcessed)):
             temporalCorrHexaBondOrientationOrderAvgAllRafts = np.zeros(numOfFrames, dtype = complex)
             temporalCorrPentaBondOrientationOrderAvgAllRafts = np.zeros(numOfFrames, dtype = complex)
             temporalCorrTetraBondOrientationOrderAvgAllRafts = np.zeros(numOfFrames, dtype = complex)
-            
-            for raftID in np.arange(numOfRafts): 
-                hexaOrdParaOfOneRaftSeries = dfNeighborsAllFrames.query('raftID == {}'.format(raftID)).hexaticOrderParameter
-                pentaOrdParaOfOneRaftSeries = dfNeighborsAllFrames.query('raftID == {}'.format(raftID)).pentaticOrderParameter
-                tetraOrdParaOfOneRaftSeries = dfNeighborsAllFrames.query('raftID == {}'.format(raftID)).tetraticOrderParameter
-                
-                hexaOrdParaOfOneRaftArray = np.array(hexaOrdParaOfOneRaftSeries.tolist())
-                pentaOrdParaOfOneRaftArray = np.array(pentaOrdParaOfOneRaftSeries.tolist())
-                tetraOrdParaOfOneRaftArray = np.array(tetraOrdParaOfOneRaftSeries.tolist())
-                # construct the Toeplitz matrix, repeat input array twice to avoid the default conjugation 
-                hexaOrdParaOfOneRaftToeplitzMatrix = scipy.linalg.toeplitz(hexaOrdParaOfOneRaftArray, hexaOrdParaOfOneRaftArray)
-                pentaOrdParaOfOneRaftToeplitzMatrix = scipy.linalg.toeplitz(pentaOrdParaOfOneRaftArray, pentaOrdParaOfOneRaftArray)
-                tetraOrdParaOfOneRaftToeplitzMatrix = scipy.linalg.toeplitz(tetraOrdParaOfOneRaftArray, tetraOrdParaOfOneRaftArray)
-                
-                # construct the conjugated array and braodcasted it to the shape of the Toeplitz matrix
-                hexaOrdParaOfOneRaftArrayConjugate = np.conjugate(hexaOrdParaOfOneRaftArray)
-                hexaOrdParaOfOneRaftArrayConjugateBroadcasted = np.transpose(np.broadcast_to(hexaOrdParaOfOneRaftArrayConjugate, hexaOrdParaOfOneRaftToeplitzMatrix.shape))
-                pentaOrdParaOfOneRaftArrayConjugate = np.conjugate(pentaOrdParaOfOneRaftArray)
-                pentaOrdParaOfOneRaftArrayConjugateBroadcasted = np.transpose(np.broadcast_to(pentaOrdParaOfOneRaftArrayConjugate, pentaOrdParaOfOneRaftToeplitzMatrix.shape))
-                tetraOrdParaOfOneRaftArrayConjugate = np.conjugate(tetraOrdParaOfOneRaftArray)
-                tetraOrdParaOfOneRaftArrayConjugateBroadcasted = np.transpose(np.broadcast_to(tetraOrdParaOfOneRaftArrayConjugate, tetraOrdParaOfOneRaftToeplitzMatrix.shape))
-                
-                # multiply the two matrix so that for each column, the rows on and below the diagonal are the products of 
-                # the conjugate of psi6(t0) and psi6(t0 + tStepSize), the tStepSize is the same the column index. 
-                hexaOrdParaOfOneRaftBroadcastedTimesToeplitz = hexaOrdParaOfOneRaftArrayConjugateBroadcasted * hexaOrdParaOfOneRaftToeplitzMatrix
-                pentaOrdParaOfOneRaftBroadcastedTimesToeplitz = pentaOrdParaOfOneRaftArrayConjugateBroadcasted * pentaOrdParaOfOneRaftToeplitzMatrix
-                tetraOrdParaOfOneRaftBroadcastedTimesToeplitz = tetraOrdParaOfOneRaftArrayConjugateBroadcasted * tetraOrdParaOfOneRaftToeplitzMatrix
-                
-                for tStepSize in np.arange(numOfFrames):
-                    temporalCorrHexaBondOrientationOrder[raftID, tStepSize] = np.average(hexaOrdParaOfOneRaftBroadcastedTimesToeplitz[tStepSize:,tStepSize])
-                    temporalCorrPentaBondOrientationOrder[raftID, tStepSize] = np.average(pentaOrdParaOfOneRaftBroadcastedTimesToeplitz[tStepSize:,tStepSize])
-                    temporalCorrTetraBondOrientationOrder[raftID, tStepSize] = np.average(tetraOrdParaOfOneRaftBroadcastedTimesToeplitz[tStepSize:,tStepSize])
-            
-            temporalCorrHexaBondOrientationOrderAvgAllRafts = temporalCorrHexaBondOrientationOrder.mean(axis = 0)
-            temporalCorrPentaBondOrientationOrderAvgAllRafts = temporalCorrPentaBondOrientationOrder.mean(axis = 0)
-            temporalCorrTetraBondOrientationOrderAvgAllRafts = temporalCorrTetraBondOrientationOrder.mean(axis = 0) 
+#            
+#            for raftID in np.arange(numOfRafts): 
+#                hexaOrdParaOfOneRaftSeries = dfNeighborsAllFrames.query('raftID == {}'.format(raftID)).hexaticOrderParameter
+#                pentaOrdParaOfOneRaftSeries = dfNeighborsAllFrames.query('raftID == {}'.format(raftID)).pentaticOrderParameter
+#                tetraOrdParaOfOneRaftSeries = dfNeighborsAllFrames.query('raftID == {}'.format(raftID)).tetraticOrderParameter
+#                
+#                hexaOrdParaOfOneRaftArray = np.array(hexaOrdParaOfOneRaftSeries.tolist())
+#                pentaOrdParaOfOneRaftArray = np.array(pentaOrdParaOfOneRaftSeries.tolist())
+#                tetraOrdParaOfOneRaftArray = np.array(tetraOrdParaOfOneRaftSeries.tolist())
+#                # construct the Toeplitz matrix, repeat input array twice to avoid the default conjugation 
+#                hexaOrdParaOfOneRaftToeplitzMatrix = scipy.linalg.toeplitz(hexaOrdParaOfOneRaftArray, hexaOrdParaOfOneRaftArray)
+#                pentaOrdParaOfOneRaftToeplitzMatrix = scipy.linalg.toeplitz(pentaOrdParaOfOneRaftArray, pentaOrdParaOfOneRaftArray)
+#                tetraOrdParaOfOneRaftToeplitzMatrix = scipy.linalg.toeplitz(tetraOrdParaOfOneRaftArray, tetraOrdParaOfOneRaftArray)
+#                
+#                # construct the conjugated array and braodcasted it to the shape of the Toeplitz matrix
+#                hexaOrdParaOfOneRaftArrayConjugate = np.conjugate(hexaOrdParaOfOneRaftArray)
+#                hexaOrdParaOfOneRaftArrayConjugateBroadcasted = np.transpose(np.broadcast_to(hexaOrdParaOfOneRaftArrayConjugate, hexaOrdParaOfOneRaftToeplitzMatrix.shape))
+#                pentaOrdParaOfOneRaftArrayConjugate = np.conjugate(pentaOrdParaOfOneRaftArray)
+#                pentaOrdParaOfOneRaftArrayConjugateBroadcasted = np.transpose(np.broadcast_to(pentaOrdParaOfOneRaftArrayConjugate, pentaOrdParaOfOneRaftToeplitzMatrix.shape))
+#                tetraOrdParaOfOneRaftArrayConjugate = np.conjugate(tetraOrdParaOfOneRaftArray)
+#                tetraOrdParaOfOneRaftArrayConjugateBroadcasted = np.transpose(np.broadcast_to(tetraOrdParaOfOneRaftArrayConjugate, tetraOrdParaOfOneRaftToeplitzMatrix.shape))
+#                
+#                # multiply the two matrix so that for each column, the rows on and below the diagonal are the products of 
+#                # the conjugate of psi6(t0) and psi6(t0 + tStepSize), the tStepSize is the same the column index. 
+#                hexaOrdParaOfOneRaftBroadcastedTimesToeplitz = hexaOrdParaOfOneRaftArrayConjugateBroadcasted * hexaOrdParaOfOneRaftToeplitzMatrix
+#                pentaOrdParaOfOneRaftBroadcastedTimesToeplitz = pentaOrdParaOfOneRaftArrayConjugateBroadcasted * pentaOrdParaOfOneRaftToeplitzMatrix
+#                tetraOrdParaOfOneRaftBroadcastedTimesToeplitz = tetraOrdParaOfOneRaftArrayConjugateBroadcasted * tetraOrdParaOfOneRaftToeplitzMatrix
+#                
+#                for tStepSize in np.arange(numOfFrames):
+#                    temporalCorrHexaBondOrientationOrder[raftID, tStepSize] = np.average(hexaOrdParaOfOneRaftBroadcastedTimesToeplitz[tStepSize:,tStepSize])
+#                    temporalCorrPentaBondOrientationOrder[raftID, tStepSize] = np.average(pentaOrdParaOfOneRaftBroadcastedTimesToeplitz[tStepSize:,tStepSize])
+#                    temporalCorrTetraBondOrientationOrder[raftID, tStepSize] = np.average(tetraOrdParaOfOneRaftBroadcastedTimesToeplitz[tStepSize:,tStepSize])
+#            
+#            temporalCorrHexaBondOrientationOrderAvgAllRafts = temporalCorrHexaBondOrientationOrder.mean(axis = 0)
+#            temporalCorrPentaBondOrientationOrderAvgAllRafts = temporalCorrPentaBondOrientationOrder.mean(axis = 0)
+#            temporalCorrTetraBondOrientationOrderAvgAllRafts = temporalCorrTetraBondOrientationOrder.mean(axis = 0) 
                 
         ###########################  mutual information analysis
         if analysisType == 3 or analysisType == 4:
@@ -1607,7 +1610,7 @@ dfClusterSizeIncludingLonersTime.to_csv(dataFileName + '_clustersizeincludinglon
 
 #%% load data corresponding to a specific experiment (subfolder or video) into variables
 
-dataID = 0
+dataID = 7
 
 variableListFromProcessedFile = list(mainDataList[dataID].keys())
 
