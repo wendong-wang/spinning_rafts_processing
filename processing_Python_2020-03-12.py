@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 """
-@author: wwang
-
 processing script for spinning rafts systems
 
 ----------- Table of Contents
@@ -10,7 +8,7 @@ processing script for spinning rafts systems
 - data processing
 - debugging code for find circles using scikit image
 - debugging code for getting the rotation angle
-- using substraction to evalute the number of rafts that are stepped out
+- using subtraction to evaluate the number of rafts that are stepped out
 - track circle using Hungarian Algorithm; effused rafts function definition 
 
 """
@@ -32,17 +30,26 @@ import shelve
 import progressbar
 
 
-def FindCirclesThres(current_frame_gray, num_of_rafts, radii_Hough=[17, 19],
-                     thres_value=70, adaptiveThres_blocksize=9, adaptiveThres_const=-20,
-                     sigma_Canny=1.0, low_threshold_canny=25, high_threshold_canny=127,
-                     min_sep_dist=20, lookup_radius=768, raft_center_threshold=60,
-                     topLeft_x=390, topLeft_y=450, width_x=850, height_y=850, error_message=' '):
+def find_circles_thres(current_frame_gray, num_of_rafts, radii_Hough=[17, 19],
+                       thres_value=70, sigma_Canny=1.0, low_threshold_canny=25, high_threshold_canny=127,
+                       min_sep_dist=20, raft_center_threshold=60,
+                       topLeft_x=390, topLeft_y=450, width_x=850, height_y=850):
     """
     find the centers of each raft
-
-    current_frame_gray: gray scale image
-    num_of_rafts: number of rafts to be located
-    radii_Hough: [starting radius, ending radius, intervale], to be unpacked as an argument for hough_circle
+    :param current_frame_gray: image in grayscale
+    :param num_of_rafts:
+    :param radii_Hough: the range of Hough radii
+    :param thres_value: threshold value
+    :param sigma_Canny:
+    :param low_threshold_canny:
+    :param high_threshold_canny:
+    :param min_sep_dist:
+    :param raft_center_threshold:
+    :param topLeft_x:
+    :param topLeft_y:
+    :param width_x:
+    :param height_y:
+    :return: raft_centers, raft_radii, raft_count
     """
     # key data set initialization
     raft_centers = np.zeros((num_of_rafts, 2), dtype=int)
@@ -84,8 +91,8 @@ def FindCirclesThres(current_frame_gray, num_of_rafts, radii_Hough=[17, 19],
             if np.any(costMatrix < min_sep_dist):  # raft still exist
                 new_raft = 0
         if new_raft == 1:
-            raft_centers[
-                raft_count, 0] = detected_cx  # note that raft_count starts with 1, also note that cx corresonds to columns number
+            raft_centers[raft_count, 0] = detected_cx
+            # note that raft_count starts with 1, also note that cx corresponds to columns number
             raft_centers[raft_count, 1] = detected_cy  # cy is row number
             raft_radii[raft_count] = detected_radius
             raft_count = raft_count + 1
@@ -100,16 +107,26 @@ def FindCirclesThres(current_frame_gray, num_of_rafts, radii_Hough=[17, 19],
     return raft_centers, raft_radii, raft_count
 
 
-def FindCirclesAdaptive(current_frame_gray, num_of_rafts, radii_Hough=[17, 19], thres_value=70,
-                        adaptiveThres_blocksize=9, adaptiveThres_const=-20, sigma_Canny=1.0, low_threshold_canny=25,
-                        high_threshold_canny=127, min_sep_dist=20, lookup_radius=768, raft_center_threshold=60,
-                        topLeft_x=390, topLeft_y=450, width_x=850, height_y=850, error_message=' '):
-    ''' find the centers of each raft
-    
-    current_frame_gray: gray scale image
-    num_of_rafts: number of rafts to be located 
-    radii_Hough: [starting radius, ending radius, intervale], to be unpacked as an argument for hough_circle
-    '''
+def find_circles_adaptive(current_frame_gray, num_of_rafts, radii_hough=[17, 19],
+                          adaptive_thres_blocksize=9, adaptive_thres_const=-20,
+                          min_sep_dist=20, raft_center_threshold=60,
+                          topLeft_x=390, topLeft_y=450, width_x=850, height_y=850):
+    """
+    find the centers of each raft
+    :param current_frame_gray:
+    :param num_of_rafts:
+    :param radii_hough:
+    :param adaptive_thres_blocksize:
+    :param adaptive_thres_const:
+    :param min_sep_dist:
+    :param raft_center_threshold:
+    :param topLeft_x:
+    :param topLeft_y:
+    :param width_x:
+    :param height_y:
+    :return: raft_centers, raft_radii, raft_count
+
+    """
     # key data set initialization
     raft_centers = np.zeros((num_of_rafts, 2), dtype=int)
     raft_radii = np.zeros(num_of_rafts, dtype=int)
@@ -119,11 +136,11 @@ def FindCirclesAdaptive(current_frame_gray, num_of_rafts, radii_Hough=[17, 19], 
 
     # threshold the image
     image_thres = cv.adaptiveThreshold(image_cropped, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY,
-                                       adaptiveThres_blocksize, adaptiveThres_const)
+                                       adaptive_thres_blocksize, adaptive_thres_const)
 
     # use Hough transform to find circles
-    hough_results = hough_circle(image_thres, np.arange(*radii_Hough))
-    accums, cx, cy, radii = hough_circle_peaks(hough_results, np.arange(*radii_Hough))
+    hough_results = hough_circle(image_thres, np.arange(*radii_hough))
+    accums, cx, cy, radii = hough_circle_peaks(hough_results, np.arange(*radii_hough))
 
     # assuming that the first raft (highest accumulator score) is a good one
     #    raft_centers[0,0] = cx[0]
@@ -147,9 +164,10 @@ def FindCirclesAdaptive(current_frame_gray, num_of_rafts, radii_Hough=[17, 19], 
             if np.any(costMatrix < min_sep_dist):  # raft still exist
                 new_raft = 0
         if new_raft == 1:
-            raft_centers[
-                raft_count, 0] = detected_cx  # note that raft_count starts with 1, also note that cx corresonds to columns number
-            raft_centers[raft_count, 1] = detected_cy  # cy is row number
+            raft_centers[raft_count, 0] = detected_cx
+            # note that raft_count starts with 1, also note that cx corresonds to columns number
+            raft_centers[raft_count, 1] = detected_cy
+            # cy is row number
             raft_radii[raft_count] = detected_radius
             raft_count = raft_count + 1
         if raft_count == num_of_rafts:
@@ -163,26 +181,30 @@ def FindCirclesAdaptive(current_frame_gray, num_of_rafts, radii_Hough=[17, 19], 
     return raft_centers, raft_radii, raft_count
 
 
-def FindAndSortCircles(image_gray, num_of_rafts, prev_pos, radii_Hough=[30, 40], thres_value=30, sigma_Canny=1.0,
-                       low_threshold_canny=25, high_threshold_canny=127, max_displ=50):
+def find_and_sort_circles(image_gray, num_of_rafts, prev_pos, radii_Hough=[30, 40], thres_value=30, sigma_Canny=1.0,
+                          low_threshold_canny=25, high_threshold_canny=127, max_displ=50):
     """
     For each raft detected in the prev_pos, go through the newly found circles in descending order of scores,
     and the first one within max_displ is the stored as the new position of the raft.
 
-    image_gray: gray scale image
-    num_of_rafts: number of rafts to be located
-    prev_pos: previous positions of rafts
-    radii_Hough: [starting radius, ending radius, intervale], to be unpacked as an argument for hough_circle
-    sigma_Canny: the width of the Gaussian filter for Canny edge detection
-    low_threshold_canny: low threshold for Canny
-    high_threshold_canny: high threshold for Canny
+    :param image_gray: gray scale image
+    :param num_of_rafts: number of rafts to be located
+    :param prev_pos: previous positions of rafts
+    :param radii_Hough: [starting radius, ending radius], to be unpacked as an argument for hough_circle
+    :param thres_value:
+    :param sigma_Canny: the width of the Gaussian filter for Canny edge detection
+    :param low_threshold_canny: low threshold for Canny
+    :param high_threshold_canny: high threshold for Canny
+    :param max_displ: maximum displacement
+    :return:
+
     """
     # key data set initialization
     raft_centers = np.zeros((num_of_rafts, 2), dtype=int)
     raft_radii = np.zeros(num_of_rafts, dtype=int)
 
     # threshold the image first
-    retval, image_thres = cv.threshold(currentFrameGray, thres_value, 255, 0)
+    retval, image_thres = cv.threshold(image_gray, thres_value, 255, 0)
     #    kernel = np.ones((3,3),np.uint8)
     #    image_thres = cv.morphologyEx(image_thres, cv.MORPH_OPEN, kernel)
 
@@ -197,9 +219,10 @@ def FindAndSortCircles(image_gray, num_of_rafts, prev_pos, radii_Hough=[30, 40],
         for accumScore, detected_cx, detected_cy, detected_radius in zip(accums, cx, cy, radii):
             distance = np.sqrt((detected_cx - prev_pos[raftID, 0]) ** 2 + (detected_cy - prev_pos[raftID, 1]) ** 2)
             if distance < max_displ:
-                raft_centers[
-                    raftID, 0] = detected_cx  # note that raft_count starts with 1, also note that cx corresonds to columns number
-                raft_centers[raftID, 1] = detected_cy  # cy is row number
+                raft_centers[raftID, 0] = detected_cx
+                # note that raft_count starts with 1, also note that cx corresonds to columns number
+                raft_centers[raftID, 1] = detected_cy
+                # cy is row number
                 raft_radii[raftID] = detected_radius
                 raft_count += 1
                 break
@@ -207,7 +230,7 @@ def FindAndSortCircles(image_gray, num_of_rafts, prev_pos, radii_Hough=[30, 40],
     return raft_centers, raft_radii, raft_count
 
 
-def DetectByContours(image_gray):
+def detect_by_contours(image_gray):
     original = image_gray.copy()
     lowcut = original.mean() + 1.0 * original.std()
     retval, image_thres = cv.threshold(original, lowcut, 255, cv.THRESH_BINARY)
@@ -231,14 +254,15 @@ def DetectByContours(image_gray):
     return raft_centers, raft_radii
 
 
-def ParseMainFolderName(main_folder_name):
-    ''' parse the name of the main folder here, and return the follwing parts
+def parse_main_folder_name(main_folder_name):
+    """
+    parse the name of the main folder here, and return the follwing parts
     date, string
     raft_geometry, string
     thin_film_prop, string
     magnet_field_prop, string
     comments, string
-    '''
+    """
     parts = main_folder_name.split('_')
 
     date = parts[0]
@@ -254,8 +278,9 @@ def ParseMainFolderName(main_folder_name):
     return date, raft_geometry, thin_film_prop, magnet_field_prop, comments
 
 
-def ParseSubfolderName(subfolder_name):
-    """ parse the subfolder name here, and return the following variables
+def parse_subfolder_name(subfolder_name):
+    """
+    parse the subfolder name here, and return the following variables
     num_of_rafts, int
     batch_number, int
     spin_speed, int
@@ -285,7 +310,7 @@ def ParseSubfolderName(subfolder_name):
     return num_of_rafts, batch_number, spin_speed, spin_unit, magnification, comments
 
 
-def CalculateDistance(p1, p2):
+def calculate_distance(p1, p2):
     """
     calculate the distance between p1 and p2
     """
@@ -295,7 +320,7 @@ def CalculateDistance(p1, p2):
     return dist
 
 
-def CalculateOrbitingAngle(orbiting_center, raft):
+def calculate_orbiting_angle(orbiting_center, raft):
     """
     calculate the orbiting angle of a raft with respect to a center
     """
@@ -308,7 +333,7 @@ def CalculateOrbitingAngle(orbiting_center, raft):
     return angle
 
 
-def NumberingRafts(rafts_loc, rafts_radii, num_of_rafts):
+def numbering_rafts(rafts_loc, rafts_radii, num_of_rafts):
     """
     sort the rafts into layers and number them sequentially from inner most layer to the outmost layer
     return sorted rafts_loc and rafts_radii, and layer index
@@ -350,22 +375,22 @@ def NumberingRafts(rafts_loc, rafts_radii, num_of_rafts):
     return rafts_loc_sorted2, rafts_radii_sorted2, dist_sorted2, angles_sorted2, layer_index_sorted2
 
 
-def CropImage(grayscale_image, raft_center, width):
+def crop_image(grayscale_image, raft_center, width):
     """
     crop the area of the raft
     """
-    topRow = int(raft_center[
-                     1] - width / 2)  # note that y corresponds to rows, and is directed from top to bottom in scikit-image
-    bottomRow = int(raft_center[1] + width / 2)
+    top_row = int(raft_center[1] - width / 2)
+    # note that y corresponds to rows, and is directed from top to bottom in scikit-image
+    bottom_row = int(raft_center[1] + width / 2)
 
-    leftColumn = int(raft_center[0] - width / 2)
-    rightColumn = int(raft_center[0] + width / 2)
+    left_column = int(raft_center[0] - width / 2)
+    right_column = int(raft_center[0] + width / 2)
 
-    raft_image = grayscale_image[topRow:bottomRow, leftColumn:rightColumn]
+    raft_image = grayscale_image[top_row:bottom_row, left_column:right_column]
     return raft_image
 
 
-def TrackingRafts(prev_rafts_locations, detected_centers, num_of_rafts):
+def tracking_rafts(prev_rafts_locations, detected_centers):
     """
     sort the detected_centers according to the locations of rafts in the previous frame
 
@@ -378,7 +403,7 @@ def TrackingRafts(prev_rafts_locations, detected_centers, num_of_rafts):
     return col_ind
 
 
-def CountingEffusedRafts(prev_centers, prev_count, curr_centers, curr_count, boundary_x, max_displacement):
+def counting_effused_rafts(prev_centers, prev_count, curr_centers, curr_count, boundary_x, max_displacement):
     """
     test if the raft crosses the boundary of container
     """
@@ -399,7 +424,7 @@ def CountingEffusedRafts(prev_centers, prev_count, curr_centers, curr_count, bou
     return effused_raft_toLeft, effused_raft_toRight
 
 
-def GetRotationAngle(prev_image, curr_image):
+def get_rotation_angle(prev_image, curr_image):
     """
     extract the angle of rotation theta between two frames
     """
@@ -440,9 +465,9 @@ def GetRotationAngle(prev_image, curr_image):
     if transformMatrix is None:
         transformMatrix, mask = cv.findHomography(src_pts, dst_pts, 0)
 
-    vector_along_x_axis_from_center = np.float32([[sizeOfCroppedRaftImage / 2, sizeOfCroppedRaftImage / 2],
-                                                  [sizeOfCroppedRaftImage, sizeOfCroppedRaftImage / 2]]).reshape(-1, 1,
-                                                                                                                 2)
+    vector_along_x_axis_from_center = \
+        np.float32([[sizeOfCroppedRaftImage / 2, sizeOfCroppedRaftImage / 2],
+                    [sizeOfCroppedRaftImage, sizeOfCroppedRaftImage / 2]]).reshape(-1, 1, 2)
     vector_transformed = cv.perspectiveTransform(vector_along_x_axis_from_center, transformMatrix)
 
     theta = - np.arctan2(vector_transformed[1, 0, 1] - vector_transformed[0, 0, 1],
@@ -452,7 +477,7 @@ def GetRotationAngle(prev_image, curr_image):
     return theta
 
 
-def DrawRafts(img_bgr, rafts_loc, rafts_radii, num_of_rafts):
+def draw_rafts(img_bgr, rafts_loc, rafts_radii, num_of_rafts):
     """
     draw circles around rafts
     """
@@ -468,14 +493,13 @@ def DrawRafts(img_bgr, rafts_loc, rafts_radii, num_of_rafts):
     return output_img
 
 
-def DrawRaftOrientations(img_bgr, rafts_loc, rafts_ori, rafts_radii, num_of_rafts):
+def draw_raft_orientations(img_bgr, rafts_loc, rafts_ori, rafts_radii, num_of_rafts):
     """
     draw lines to indicte the orientation of each raft
     """
 
     line_thickness = int(2)
     line_color = (255, 0, 0)
-    #    line_length = 20
 
     output_img = img_bgr
     for raft_id in np.arange(num_of_rafts):
@@ -487,30 +511,31 @@ def DrawRaftOrientations(img_bgr, rafts_loc, rafts_ori, rafts_radii, num_of_raft
     return output_img
 
 
-def DrawRaftNumber(img_bgr, rafts_loc, num_of_rafts):
+def draw_raft_number(img_bgr, rafts_loc, num_of_rafts):
     """
     draw the raft number at the center of the rafts
     """
 
-    fontFace = cv.FONT_HERSHEY_SIMPLEX
+    font_face = cv.FONT_HERSHEY_SIMPLEX
     font_scale = 0.5
     font_color = (0, 255, 255)  # BGR
     font_thickness = 1
     output_img = img_bgr
     for raft_id in np.arange(num_of_rafts):
-        textSize, _ = cv.getTextSize(str(raft_id + 1), fontFace, font_scale, font_thickness)
+        textSize, _ = cv.getTextSize(str(raft_id + 1), font_face, font_scale, font_thickness)
         output_img = cv.putText(output_img, str(raft_id + 1),
                                 (rafts_loc[raft_id, 0] - textSize[0] // 2, rafts_loc[raft_id, 1] + textSize[1] // 2),
-                                fontFace, font_scale, font_color, font_thickness, cv.LINE_AA)
+                                font_face, font_scale, font_color, font_thickness, cv.LINE_AA)
 
     return output_img
 
 
-def DrawEffusedRaftCount(img_bgr, raft_effused, raft_to_left, raft_to_right, topLeft_X, topLeft_Y, width_X, height_Y):
+def draw_effused_raft_count(img_bgr, raft_effused, raft_to_left, raft_to_right, topLeft_X, topLeft_Y, width_X,
+                            height_Y):
     """
     draw effused rafts
     """
-    fontFace = cv.FONT_HERSHEY_SIMPLEX
+    font_face = cv.FONT_HERSHEY_SIMPLEX
     font_scale = 1
     font_color = (0, 0, 255)  # BGR
     font_thickness = 2
@@ -519,11 +544,11 @@ def DrawEffusedRaftCount(img_bgr, raft_effused, raft_to_left, raft_to_right, top
     output_img = img_bgr
     output_img = cv.line(output_img, (topLeft_X + width_X // 2, topLeft_Y),
                          (topLeft_X + width_X // 2, topLeft_Y + height_Y), line_color, line_thickness)
-    output_img = cv.putText(output_img, 'Effused: ' + str(raft_effused), (topLeftX, topLeftY - 30), fontFace,
+    output_img = cv.putText(output_img, 'Effused: ' + str(raft_effused), (topLeftX, topLeftY - 30), font_face,
                             font_scale, font_color, font_thickness, cv.LINE_AA)
-    output_img = cv.putText(output_img, 'To left: ' + str(raft_to_left), (topLeftX, topLeftY - 60), fontFace,
+    output_img = cv.putText(output_img, 'To left: ' + str(raft_to_left), (topLeftX, topLeftY - 60), font_face,
                             font_scale, font_color, font_thickness, cv.LINE_AA)
-    output_img = cv.putText(output_img, 'To right: ' + str(raft_to_right), (topLeftX, topLeftY - 90), fontFace,
+    output_img = cv.putText(output_img, 'To right: ' + str(raft_to_right), (topLeftX, topLeftY - 90), font_face,
                             font_scale, font_color, font_thickness, cv.LINE_AA)
 
     return output_img
@@ -545,7 +570,9 @@ imageFormat = '*.tiff'
 
 # parameters for various find-circle functions
 # frequently-adjusted:
-radiusIntervalHough = [14, 18]  # [71, 77] for 2.5x, [21, 25] for 0.8x, [14, 18] for 0.57x for 5x using coaxial illumination,  [45, 55] for 5x using ring light illumination, [10, 20] for multiple rafts 1 or 2x.
+radiusIntervalHough = [14, 18]  # [71, 77] for 2.5x, [21, 25] for 0.8x,
+# [14, 18] for 0.57x for 5x using coaxial illumination,
+# [45, 55] for 5x using ring light illumination, [10, 20] for multiple rafts 1 or 2x.
 adaptiveThresBlocksize = 5  # 5, 13 #9 #19 #9
 adaptiveThresConst = -13  # -9, 13
 raftCenterThreshold = 40  # 30, 40, 50 #100 #74 #78 #80
@@ -557,7 +584,7 @@ widthX = 70  # 1728 #1472 #130
 heightY = 280  # 1728 #1400 #280
 # maxim displacement, usually twice of the upper radius, used in tracking in effusions and FindAndSortCircles
 maxDisplacement = 36
-# not used FindCirclesAdaptive, but in the FindCirclesThres and FindAndSortCircles
+# not used find_circles_adaptive, but in the find_circles_thres and FindAndSortCircles
 thresholdingValue = 33
 lowThresholdCanny = 25
 highThresholdCanny = 127
@@ -618,7 +645,7 @@ listOfVarialbesToSave = ['batchNum', 'commentsMain', 'commentsSub', 'currentFram
 for mainFolderID in np.arange(2, 3):
     os.chdir(mainFolders[mainFolderID])
     # parse the main folder name here
-    date, raftGeo, thinFilmProp, magneticFieldProp, commentsMain = ParseMainFolderName(mainFolders[mainFolderID])
+    date, raftGeo, thinFilmProp, magneticFieldProp, commentsMain = parse_main_folder_name(mainFolders[mainFolderID])
 
     if isVideo == 1:
         videoFileList = glob.glob(videoFormat)
@@ -631,8 +658,8 @@ for mainFolderID in np.arange(2, 3):
     for expID in range(0, numOfExp):
         if isVideo == 1:
             # parse video file name, initial video, get total number of frames
-            numOfRafts, batchNum, spinSpeed, spinUnit, magnification, commentsSub = ParseSubfolderName(
-                videoFileList[expID])
+            numOfRafts, batchNum, spinSpeed, spinUnit, magnification, commentsSub = \
+                parse_subfolder_name(videoFileList[expID])
             outputDataFileName = date + '_' + str(numOfRafts) + 'Rafts_' + str(batchNum) + '_' + str(spinSpeed) + 'rps'
             if os.path.isfile(outputDataFileName + '.dat') == True:
                 errorMessage = '{0}.dat exists'.format(outputDataFileName)
@@ -642,10 +669,11 @@ for mainFolderID in np.arange(2, 3):
             numOfFrames = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
         else:
             # parse the subfolder name, read file list, get total number of frames
-            numOfRafts, batchNum, spinSpeed, spinUnit, magnification, commentsSub = ParseSubfolderName(
-                subfolders[expID])
-            outputDataFileName = date + '_' + str(numOfRafts) + 'Rafts_' + str(batchNum) + '_' + str(
-                spinSpeed) + 'rps_' + str(magnification) + 'x_' + commentsSub
+            numOfRafts, batchNum, spinSpeed, spinUnit, magnification, commentsSub = \
+                parse_subfolder_name(subfolders[expID])
+            outputDataFileName = \
+                date + '_' + str(numOfRafts) + 'Rafts_' + str(batchNum) + '_' + str(spinSpeed) + 'rps_' + \
+                str(magnification) + 'x_' + commentsSub
             if os.path.isfile(outputDataFileName + '.dat') == True:
                 errorMessage = '{0}.dat exists'.format(outputDataFileName)
                 print(errorMessage)
@@ -670,9 +698,9 @@ for mainFolderID in np.arange(2, 3):
         if processRotation == 1:
             firstImages = np.zeros((numOfRafts, sizeOfCroppedRaftImage, sizeOfCroppedRaftImage))
             currImages = np.zeros((numOfRafts, sizeOfCroppedRaftImage, sizeOfCroppedRaftImage))
-        raftEffused = np.zeros((numOfFrames), dtype=int)
-        raftToLeft = np.zeros((numOfFrames), dtype=int)
-        raftToRight = np.zeros((numOfFrames), dtype=int)
+        raftEffused = np.zeros(numOfFrames, dtype=int)
+        raftToLeft = np.zeros(numOfFrames, dtype=int)
+        raftToRight = np.zeros(numOfFrames, dtype=int)
         effusedRaftCount = 0
         raftMovingToLeftCount = 0
         raftMovingToRightCount = 0
@@ -680,59 +708,45 @@ for mainFolderID in np.arange(2, 3):
                                          dtype=int)  # (raftNum, frameNum, x(columns)&y(rows)
         raftRadiiInRegion = np.zeros((maxNumOfRaftsInRegion, numOfFrames), dtype=int)
 
-        ## read and process the first frame
+        # read and process the first frame
         currentFrameNum = 0
         if isVideo == 1:
             retval, currentFrameBGR = cap.read()
             currentFrameGray = cv.cvtColor(currentFrameBGR, cv.COLOR_BGR2GRAY)
         else:
             currentFrameBGR = cv.imread(tiffFileList[currentFrameNum])
-            #            currentFrameGray = cv.imread(tiffFileList[currentFrameNum],0)
-            currentFrameGray = currentFrameBGR[:, :,
-                               1]  # use only green channel. We found green channel has the highest contrast.
+            # currentFrameGray = cv.imread(tiffFileList[currentFrameNum],0)
+            currentFrameGray = currentFrameBGR[:, :, 1]
+            # use only green channel. We found green channel has the highest contrast.
 
         # find cricles in the first frame
-        centers, radii, prevCount = FindCirclesAdaptive(currentFrameGray, numOfRafts, radii_Hough=radiusIntervalHough,
-                                                        thres_value=thresholdingValue,
-                                                        adaptiveThres_blocksize=adaptiveThresBlocksize,
-                                                        adaptiveThres_const=adaptiveThresConst,
-                                                        sigma_Canny=sigmaCanny, low_threshold_canny=lowThresholdCanny,
-                                                        high_threshold_canny=highThresholdCanny,
-                                                        min_sep_dist=minSepDist,
-                                                        lookup_radius=lookupRadius,
-                                                        raft_center_threshold=raftCenterThreshold,
-                                                        topLeft_x=topLeftX, topLeft_y=topLeftY, width_x=widthX,
-                                                        height_y=heightY, error_message=' ')
+        centers, radii, prevCount = \
+            find_circles_adaptive(currentFrameGray, numOfRafts, radii_hough=radiusIntervalHough,
+                                  adaptive_thres_blocksize=adaptiveThresBlocksize,
+                                  adaptive_thres_const=adaptiveThresConst, min_sep_dist=minSepDist,
+                                  raft_center_threshold=raftCenterThreshold, topLeft_x=topLeftX,
+                                  topLeft_y=topLeftY, width_x=widthX, height_y=heightY)
 
         if regionalSearch == 1:
-            centersInRegion, radiiInRegion, countInRegion = FindCirclesAdaptive(currentFrameGray, maxNumOfRaftsInRegion,
-                                                                                radii_Hough=radiusIntervalHough,
-                                                                                thres_value=thresholdingValue,
-                                                                                adaptiveThres_blocksize=adaptiveThresBlocksize,
-                                                                                adaptiveThres_const=adaptiveThresConst,
-                                                                                sigma_Canny=sigmaCanny,
-                                                                                low_threshold_canny=lowThresholdCanny,
-                                                                                high_threshold_canny=highThresholdCanny,
-                                                                                min_sep_dist=minSepDist,
-                                                                                lookup_radius=lookupRadius,
-                                                                                raft_center_threshold=raftCenterThreshold,
-                                                                                topLeft_x=regionTopLeftX,
-                                                                                topLeft_y=regionTopLeftY,
-                                                                                width_x=regionWidth,
-                                                                                height_y=regionHeight,
-                                                                                error_message=' ')
+            centersInRegion, radiiInRegion, countInRegion = \
+                find_circles_adaptive(currentFrameGray, maxNumOfRaftsInRegion, radii_hough=radiusIntervalHough,
+                                      adaptive_thres_blocksize=adaptiveThresBlocksize,
+                                      adaptive_thres_const=adaptiveThresConst,
+                                      min_sep_dist=minSepDist, raft_center_threshold=raftCenterThreshold,
+                                      topLeft_x=regionTopLeftX, topLeft_y=regionTopLeftY,
+                                      width_x=regionWidth, height_y=regionHeight)
             raftLocationsInRegion[:countInRegion, 0, :] = centersInRegion[:countInRegion, :]
             raftRadiiInRegion[:countInRegion, 0] = radiiInRegion[:countInRegion]
 
         # detect by countours
-        #        centers, radii = DetectByContours(currentFrameGray)
+        #        centers, radii = detect_by_contours(currentFrameGray)
         #        numOfContours, _ = centers.shape
         #        if numOfContours < numOfRafts:
         #            continue
 
         # sorting
-        centersSorted, radiiSorted, distSorted, orbitingAnglesSorted, layerIndexSorted = NumberingRafts(centers, radii,
-                                                                                                        numOfRafts)
+        centersSorted, radiiSorted, distSorted, orbitingAnglesSorted, layerIndexSorted = numbering_rafts(centers, radii,
+                                                                                                         numOfRafts)
 
         # transfer data of the first frame to key data set
         raftLocations[:, currentFrameNum, :] = centersSorted
@@ -743,24 +757,26 @@ for mainFolderID in np.arange(2, 3):
         raftOrbitingLayerIndices[:, currentFrameNum] = layerIndexSorted
         if processRotation == 1:
             for raftID in np.arange(numOfRafts):
-                firstImages[raftID, :, :] = CropImage(currentFrameGray, raftLocations[raftID, currentFrameNum, :],
-                                                      sizeOfCroppedRaftImage)
-                raftOrientations[
-                    raftID, currentFrameNum] = raftInitialOrientation  # this could change later when we have a external standard to define what degree is.
+                firstImages[raftID, :, :] = \
+                    crop_image(currentFrameGray, raftLocations[raftID, currentFrameNum, :], sizeOfCroppedRaftImage)
+                raftOrientations[raftID, currentFrameNum] = \
+                    raftInitialOrientation  # this could change later when we have a external standard to define what degree is.
 
         # output images
         currentFrameDraw = currentFrameBGR.copy()
-        currentFrameDraw = DrawRafts(currentFrameDraw, raftLocations[:, currentFrameNum, :],
-                                     raftRadii[:, currentFrameNum], numOfRafts)
-        currentFrameDraw = DrawRaftNumber(currentFrameDraw, raftLocations[:, currentFrameNum, :], numOfRafts)
+        currentFrameDraw = \
+            draw_rafts(currentFrameDraw, raftLocations[:, currentFrameNum, :],
+                       raftRadii[:, currentFrameNum], numOfRafts)
+        currentFrameDraw = draw_raft_number(currentFrameDraw, raftLocations[:, currentFrameNum, :], numOfRafts)
         if effusionData == 1:
-            currentFrameDraw = DrawEffusedRaftCount(currentFrameDraw, raftEffused[currentFrameNum],
-                                                    raftToLeft[currentFrameNum], raftToRight[currentFrameNum], topLeftX,
-                                                    topLeftY, widthX, heightY)
+            currentFrameDraw = draw_effused_raft_count(currentFrameDraw, raftEffused[currentFrameNum],
+                                                       raftToLeft[currentFrameNum], raftToRight[currentFrameNum],
+                                                       topLeftX,
+                                                       topLeftY, widthX, heightY)
         if processRotation == 1:
-            currentFrameDraw = DrawRaftOrientations(currentFrameDraw, raftLocations[:, currentFrameNum, :],
-                                                    raftOrientations[:, currentFrameNum], raftRadii[:, currentFrameNum],
-                                                    numOfRafts)
+            currentFrameDraw = \
+                draw_raft_orientations(currentFrameDraw, raftLocations[:, currentFrameNum, :],
+                                       raftOrientations[:, currentFrameNum], raftRadii[:, currentFrameNum], numOfRafts)
         if outputImageSeq == 1:
             outputImageName = date + '_' + str(numOfRafts) + 'Rafts_' + str(batchNum) + '_' + str(
                 spinSpeed) + 'rps_' + str(currentFrameNum + 1).zfill(4) + '.jpg'
@@ -807,60 +823,43 @@ for mainFolderID in np.arange(2, 3):
                 else:
                     diffBoxHeightY = topLeftY + heightY - raftLocations[0, currentFrameNum - 1, 1]
 
-                centers, radii, currCount = FindCirclesAdaptive(currentFrameGray, numOfRafts,
-                                                                radii_Hough=radiusIntervalHough,
-                                                                thres_value=thresholdingValue,
-                                                                adaptiveThres_blocksize=adaptiveThresBlocksize,
-                                                                adaptiveThres_const=adaptiveThresConst,
-                                                                sigma_Canny=sigmaCanny,
-                                                                low_threshold_canny=lowThresholdCanny,
-                                                                high_threshold_canny=highThresholdCanny,
-                                                                min_sep_dist=minSepDist,
-                                                                lookup_radius=lookupRadius,
-                                                                raft_center_threshold=raftCenterThreshold,
-                                                                topLeft_x=diffBoxTopLeftX, topLeft_y=diffBoxTopLeftY,
-                                                                width_x=diffBoxWidthX, height_y=diffBoxHeightY,
-                                                                error_message=' ')
+                centers, radii, currCount = find_circles_adaptive(currentFrameGray, numOfRafts,
+                                                                  radii_hough=radiusIntervalHough,
+                                                                  adaptive_thres_blocksize=adaptiveThresBlocksize,
+                                                                  adaptive_thres_const=adaptiveThresConst,
+                                                                  min_sep_dist=minSepDist,
+                                                                  raft_center_threshold=raftCenterThreshold,
+                                                                  topLeft_x=diffBoxTopLeftX, topLeft_y=diffBoxTopLeftY,
+                                                                  width_x=diffBoxWidthX, height_y=diffBoxHeightY)
 
             else:
                 # find circles by Hough transform
-                centers, radii, currCount = FindCirclesAdaptive(currentFrameGray, numOfRafts,
-                                                                radii_Hough=radiusIntervalHough,
-                                                                thres_value=thresholdingValue,
-                                                                adaptiveThres_blocksize=adaptiveThresBlocksize,
-                                                                adaptiveThres_const=adaptiveThresConst,
-                                                                sigma_Canny=sigmaCanny,
-                                                                low_threshold_canny=lowThresholdCanny,
-                                                                high_threshold_canny=highThresholdCanny,
-                                                                min_sep_dist=minSepDist,
-                                                                lookup_radius=lookupRadius,
-                                                                raft_center_threshold=raftCenterThreshold,
-                                                                topLeft_x=topLeftX, topLeft_y=topLeftY, width_x=widthX,
-                                                                height_y=heightY, error_message=' ')
+                centers, radii, currCount = find_circles_adaptive(currentFrameGray, numOfRafts,
+                                                                  radii_hough=radiusIntervalHough,
+                                                                  adaptive_thres_blocksize=adaptiveThresBlocksize,
+                                                                  adaptive_thres_const=adaptiveThresConst,
+                                                                  min_sep_dist=minSepDist,
+                                                                  raft_center_threshold=raftCenterThreshold,
+                                                                  topLeft_x=topLeftX, topLeft_y=topLeftY,
+                                                                  width_x=widthX, height_y=heightY)
 
             if regionalSearch == 1:
-                centersInRegion, radiiInRegion, countInRegion = FindCirclesAdaptive(currentFrameGray,
-                                                                                    maxNumOfRaftsInRegion,
-                                                                                    radii_Hough=radiusIntervalHough,
-                                                                                    thres_value=thresholdingValue,
-                                                                                    adaptiveThres_blocksize=adaptiveThresBlocksize,
-                                                                                    adaptiveThres_const=adaptiveThresConst,
-                                                                                    sigma_Canny=sigmaCanny,
-                                                                                    low_threshold_canny=lowThresholdCanny,
-                                                                                    high_threshold_canny=highThresholdCanny,
-                                                                                    min_sep_dist=minSepDist,
-                                                                                    lookup_radius=lookupRadius,
-                                                                                    raft_center_threshold=raftCenterThreshold,
-                                                                                    topLeft_x=regionTopLeftX,
-                                                                                    topLeft_y=regionTopLeftY,
-                                                                                    width_x=regionWidth,
-                                                                                    height_y=regionHeight,
-                                                                                    error_message=' ')
+                centersInRegion, radiiInRegion, countInRegion = find_circles_adaptive(currentFrameGray,
+                                                                                      maxNumOfRaftsInRegion,
+                                                                                      radii_hough=radiusIntervalHough,
+                                                                                      adaptive_thres_blocksize=adaptiveThresBlocksize,
+                                                                                      adaptive_thres_const=adaptiveThresConst,
+                                                                                      min_sep_dist=minSepDist,
+                                                                                      raft_center_threshold=raftCenterThreshold,
+                                                                                      topLeft_x=regionTopLeftX,
+                                                                                      topLeft_y=regionTopLeftY,
+                                                                                      width_x=regionWidth,
+                                                                                      height_y=regionHeight)
                 raftLocationsInRegion[:countInRegion, currentFrameNum, :] = centersInRegion[:countInRegion, :]
                 raftRadiiInRegion[:countInRegion, currentFrameNum] = radiiInRegion[:countInRegion]
 
             # find cirlces by detect contours
-            #            centers, radii = DetectByContours(currentFrameGray)
+            #            centers, radii = detect_by_contours(currentFrameGray)
             #            numOfContours, _ = centers.shape
             #            if numOfContours < numOfRafts:
             #                continue
@@ -868,9 +867,9 @@ for mainFolderID in np.arange(2, 3):
             # tracking rafts according to the proximity to the previous frame, and then save to key data set, 
             if effusionData == 1:
                 targetID = np.arange(numOfRafts)
-                raftMovingToLeft, raftMovingToRight = CountingEffusedRafts(raftLocations[:, currentFrameNum - 1, :],
-                                                                           prevCount, centers, currCount,
-                                                                           effusionBoundaryX, maxDisplacement)
+                raftMovingToLeft, raftMovingToRight = counting_effused_rafts(raftLocations[:, currentFrameNum - 1, :],
+                                                                             prevCount, centers, currCount,
+                                                                             effusionBoundaryX, maxDisplacement)
                 raftMovingToLeftCount = raftMovingToLeftCount + raftMovingToLeft
                 raftMovingToRightCount = raftMovingToRightCount + raftMovingToRight
                 effusedRaftCount = effusedRaftCount + raftMovingToRight - raftMovingToLeft
@@ -879,7 +878,7 @@ for mainFolderID in np.arange(2, 3):
                 raftToRight[currentFrameNum] = raftMovingToRightCount
                 prevCount = currCount
             else:
-                targetID = TrackingRafts(raftLocations[:, currentFrameNum - 1, :], centers, numOfRafts)
+                targetID = tracking_rafts(raftLocations[:, currentFrameNum - 1, :], centers)
 
                 # find and track rafts together.
             #            centers, radii, detectedNum = FindAndSortCircles(currentFrameGray, numOfRafts, prev_pos = raftLocations[:,currentFrameNum-1,:],
@@ -893,9 +892,9 @@ for mainFolderID in np.arange(2, 3):
             for raftID in np.arange(numOfRafts):
                 raftLocations[raftID, currentFrameNum, :] = centers[targetID[raftID], :]
                 raftRadii[raftID, currentFrameNum] = radii[targetID[raftID]]
-                raftOrbitingDistances[raftID, currentFrameNum] = CalculateDistance(
+                raftOrbitingDistances[raftID, currentFrameNum] = calculate_distance(
                     raftOrbitingCenters[currentFrameNum, :], raftLocations[raftID, currentFrameNum, :])
-                raftOrbitingAngles[raftID, currentFrameNum] = CalculateOrbitingAngle(
+                raftOrbitingAngles[raftID, currentFrameNum] = calculate_orbiting_angle(
                     raftOrbitingCenters[currentFrameNum, :], raftLocations[raftID, currentFrameNum, :])
 
             # filling key dataset after using FindAndSortCircles
@@ -904,15 +903,15 @@ for mainFolderID in np.arange(2, 3):
             #            for raftID in np.arange(numOfRafts):
             #                raftLocations[raftID,currentFrameNum,:] = centers[raftID,:]
             #                raftRadii[raftID,currentFrameNum] = radii[raftID]
-            #                raftOrbitingDistances[raftID,currentFrameNum] = CalculateDistance(raftOrbitingCenters[currentFrameNum,:], raftLocations[raftID,currentFrameNum,:])
-            #                raftOrbitingAngles[raftID,currentFrameNum] = CalculateOrbitingAngle(raftOrbitingCenters[currentFrameNum,:], raftLocations[raftID,currentFrameNum,:])
+            #                raftOrbitingDistances[raftID,currentFrameNum] = calculate_distance(raftOrbitingCenters[currentFrameNum,:], raftLocations[raftID,currentFrameNum,:])
+            #                raftOrbitingAngles[raftID,currentFrameNum] = calculate_orbiting_angle(raftOrbitingCenters[currentFrameNum,:], raftLocations[raftID,currentFrameNum,:])
 
             # now deal with rotation
             if processRotation == 1:
                 for raftID in np.arange(numOfRafts):
-                    currImages[raftID, :, :] = CropImage(currentFrameGray, raftLocations[raftID, currentFrameNum, :],
-                                                         sizeOfCroppedRaftImage)
-                    rotationAngle = GetRotationAngle(firstImages[raftID, :, :], currImages[raftID, :, :])
+                    currImages[raftID, :, :] = crop_image(currentFrameGray, raftLocations[raftID, currentFrameNum, :],
+                                                          sizeOfCroppedRaftImage)
+                    rotationAngle = get_rotation_angle(firstImages[raftID, :, :], currImages[raftID, :, :])
                     raftOrientations[raftID, currentFrameNum] = raftOrientations[raftID, 0] + rotationAngle
                     while raftOrientations[raftID, currentFrameNum] < 0:
                         raftOrientations[raftID, currentFrameNum] = raftOrientations[raftID, currentFrameNum] + 360
@@ -921,17 +920,17 @@ for mainFolderID in np.arange(2, 3):
 
             # output images
             currentFrameDraw = currentFrameBGR.copy()
-            currentFrameDraw = DrawRafts(currentFrameDraw, raftLocations[:, currentFrameNum, :],
-                                         raftRadii[:, currentFrameNum], numOfRafts)
-            currentFrameDraw = DrawRaftNumber(currentFrameDraw, raftLocations[:, currentFrameNum, :], numOfRafts)
+            currentFrameDraw = draw_rafts(currentFrameDraw, raftLocations[:, currentFrameNum, :],
+                                          raftRadii[:, currentFrameNum], numOfRafts)
+            currentFrameDraw = draw_raft_number(currentFrameDraw, raftLocations[:, currentFrameNum, :], numOfRafts)
             if effusionData == 1:
-                currentFrameDraw = DrawEffusedRaftCount(currentFrameDraw, raftEffused[currentFrameNum],
-                                                        raftToLeft[currentFrameNum], raftToRight[currentFrameNum],
-                                                        topLeftX, topLeftY, widthX, heightY)
+                currentFrameDraw = draw_effused_raft_count(currentFrameDraw, raftEffused[currentFrameNum],
+                                                           raftToLeft[currentFrameNum], raftToRight[currentFrameNum],
+                                                           topLeftX, topLeftY, widthX, heightY)
             if processRotation == 1:
-                currentFrameDraw = DrawRaftOrientations(currentFrameDraw, raftLocations[:, currentFrameNum, :],
-                                                        raftOrientations[:, currentFrameNum],
-                                                        raftRadii[:, currentFrameNum], numOfRafts)
+                currentFrameDraw = draw_raft_orientations(currentFrameDraw, raftLocations[:, currentFrameNum, :],
+                                                          raftOrientations[:, currentFrameNum],
+                                                          raftRadii[:, currentFrameNum], numOfRafts)
             if outputImageSeq == 1:
                 outputImageName = date + '_' + str(numOfRafts) + 'Rafts_' + str(batchNum) + '_' + str(
                     spinSpeed) + 'rps_' + str(currentFrameNum + 1).zfill(4) + '.jpg'
@@ -972,7 +971,7 @@ for mainFolderID in np.arange(2, 3):
 
 # %% debugging code for find circles using scikit image
 
-## Reading files
+# Reading files
 tiffFileList = glob.glob('*.tiff')
 tiffFileList.sort()
 currentFrameNum = 0
@@ -984,8 +983,7 @@ currentFrameGray = currentFrameBGR[:, :, 1]  # green channel has the highest con
 # plt.imshow(currentFrameBGR[:,:,1], 'gray')
 plt.imshow(currentFrameGray, 'gray')
 
-## look at the FFT
-
+# look at the FFT
 f = np.fft.fft2(currentFrameGray)
 fshift = np.fft.fftshift(f)
 magnitude_spectrum = np.log(np.abs(fshift))
@@ -996,7 +994,7 @@ plt.imshow(magnitude_spectrumEnhanced, 'gray')
 outputImageName = tiffFileList[currentFrameNum].partition('.')[0] + '_fft.jpg'
 cv.imwrite(outputImageName, magnitude_spectrumEnhanced)
 
-## Reading video frames
+# Reading video frames
 videoFileList = glob.glob('*.MOV')
 numOfExp = len(videoFileList)
 expID = 0
@@ -1006,9 +1004,9 @@ retval, currentFrameBGR = cap.read()
 currentFrameGray = cv.cvtColor(currentFrameBGR, cv.COLOR_BGR2GRAY)
 cap.release()
 
-## below is to expanded version of the function FindCircles
+# below is to expanded version of the function FindCircles
 
-## parameters for various find-circle functions
+# parameters for various find-circle functions
 # frequently-adjusted:
 num_of_rafts = 100
 radii_Hough = [14, 18]  # [71, 77] for 2.5x [21, 25] for 0.8x, [14, 18] for 0.57x for 5x using coaxial illumination
@@ -1021,7 +1019,7 @@ topLeft_x = 0  # 650 #1300
 topLeft_y = 0  # 700 #160
 width_x = 1250  # 70 #100 # 70
 height_y = 1250  # 550 #550
-# not used FindCirclesAdaptive, but in the FindCirclesThres and FindAndSortCircles
+# not used find_circles_adaptive, but in the find_circles_thres and FindAndSortCircles
 thres_value = 33
 sigma_Canny = 1
 low_threshold_canny = 25
@@ -1093,14 +1091,17 @@ for accumScore, detected_cx, detected_cy, detected_radius in zip(accums, cx, cy,
         if np.any(costMatrix < min_sep_dist):  # raft still exist
             new_raft = 0
     if new_raft == 1:
-        raft_centers[
-            raft_count, 0] = detected_cx  # note that raft_count starts with 1, also note that cx corresonds to columns number
-        raft_centers[raft_count, 1] = detected_cy  # cy is row number
+        raft_centers[raft_count, 0] = detected_cx
+        # note that raft_count starts with 1, also note that cx corresonds to columns number
+        raft_centers[raft_count, 1] = detected_cy
+        # cy is row number
         raft_radii[raft_count] = detected_radius
-        #            raft_centerPixelValue[raft_count] = currentFrameGrayCropped[detected_cy, detected_cx]
-        #            raft_InscribedSquareMeanValue[raft_count] = currentFrameGrayCropped[detected_cy-detected_radius//2 : detected_cy+detected_radius//2 , detected_cx-detected_radius//2:detected_cx+detected_radius//2].mean()
-        #            raft_accumScore[raft_count] = accumScore
-        #            raft_thresholdValues[raft_count] = thres_value
+        # raft_centerPixelValue[raft_count] = currentFrameGrayCropped[detected_cy, detected_cx]
+        # raft_InscribedSquareMeanValue[raft_count] = \
+        #     currentFrameGrayCropped[detected_cy-detected_radius//2 : detected_cy+detected_radius//2,
+        #     detected_cx-detected_radius//2:detected_cx+detected_radius//2].mean()
+        # raft_accumScore[raft_count] = accumScore
+        # raft_thresholdValues[raft_count] = thres_value
         raft_count = raft_count + 1
     if raft_count == num_of_rafts:
         error_message = 'all rafts found'
@@ -1116,32 +1117,27 @@ print(timeTotal)
 print(error_message)
 print(raft_count)
 
-## FindCircles function
-raft_centers, raft_radii, raft_count = FindCirclesThres(currentFrameGray, num_of_rafts, thres_value=thres_value,
-                                                        adaptiveThres_blocksize=adaptiveThres_blocksize,
-                                                        adaptiveThres_const=adaptiveThres_const,
-                                                        radii_Hough=radii_Hough, sigma_Canny=sigma_Canny,
-                                                        low_threshold_canny=low_threshold_canny,
-                                                        high_threshold_canny=high_threshold_canny,
-                                                        min_sep_dist=min_sep_dist, lookup_radius=lookup_radius,
-                                                        raft_center_threshold=raft_center_threshold,
-                                                        topLeft_x=topLeft_x, topLeft_y=topLeft_y, width_x=width_x,
-                                                        height_y=height_y, error_message=' ')
+# FindCircles function
+raft_centers, raft_radii, raft_count = find_circles_thres(currentFrameGray, num_of_rafts, radii_Hough=radii_Hough,
+                                                          thres_value=thres_value, sigma_Canny=sigma_Canny,
+                                                          low_threshold_canny=low_threshold_canny,
+                                                          high_threshold_canny=high_threshold_canny,
+                                                          min_sep_dist=min_sep_dist,
+                                                          raft_center_threshold=raft_center_threshold,
+                                                          topLeft_x=topLeft_x, topLeft_y=topLeft_y, width_x=width_x,
+                                                          height_y=height_y)
 print(raft_count)
 
-## FindCircles function with adaptive thresholding
-raft_centers, raft_radii, raft_count = FindCirclesAdaptive(currentFrameGray, num_of_rafts, thres_value=thres_value,
-                                                           adaptiveThres_blocksize=adaptiveThres_blocksize,
-                                                           adaptiveThres_const=adaptiveThres_const,
-                                                           radii_Hough=radii_Hough, sigma_Canny=sigma_Canny,
-                                                           low_threshold_canny=low_threshold_canny,
-                                                           high_threshold_canny=high_threshold_canny,
-                                                           min_sep_dist=min_sep_dist, lookup_radius=lookup_radius,
-                                                           raft_center_threshold=raft_center_threshold,
-                                                           topLeft_x=topLeft_x, topLeft_y=topLeft_y, width_x=width_x,
-                                                           height_y=height_y, error_message=' ')
+# FindCircles function with adaptive thresholding
+raft_centers, raft_radii, raft_count = find_circles_adaptive(currentFrameGray, num_of_rafts, radii_hough=radii_Hough,
+                                                             adaptive_thres_blocksize=adaptiveThres_blocksize,
+                                                             adaptive_thres_const=adaptiveThres_const,
+                                                             min_sep_dist=min_sep_dist,
+                                                             raft_center_threshold=raft_center_threshold,
+                                                             topLeft_x=topLeft_x, topLeft_y=topLeft_y, width_x=width_x,
+                                                             height_y=height_y)
 print(raft_count)
-## below is for FindAndSortCircles, after using FindCircles to get the first centers
+# below is for FindAndSortCircles, after using FindCircles to get the first centers
 prev_pos = raft_centers
 max_displ = 30
 currentFrameNum += 1
@@ -1150,15 +1146,15 @@ currentFrameGray = cv.imread(tiffFileList[currentFrameNum], 0)
 currentFrameGrayContAdj = cv.equalizeHist(currentFrameGray)
 plt.imshow(currentFrameGray, 'gray')
 
-raft_centers, raft_radii, raft_count = FindAndSortCircles(currentFrameGray, num_of_rafts, prev_pos=prev_pos,
-                                                          thres_value=thres_value, radii_Hough=radii_Hough,
-                                                          sigma_Canny=sigma_Canny,
-                                                          low_threshold_canny=low_threshold_canny,
-                                                          high_threshold_canny=high_threshold_canny,
-                                                          max_displ=max_displ)
+raft_centers, raft_radii, raft_count = find_and_sort_circles(currentFrameGray, num_of_rafts, prev_pos=prev_pos,
+                                                             radii_Hough=radii_Hough, thres_value=thres_value,
+                                                             sigma_Canny=sigma_Canny,
+                                                             low_threshold_canny=low_threshold_canny,
+                                                             high_threshold_canny=high_threshold_canny,
+                                                             max_displ=max_displ)
 
-## below is for DetectByContours
-raft_centers, raft_radii = DetectByContours(currentFrameGray)
+# below is for detect_by_contours
+raft_centers, raft_radii = detect_by_contours(currentFrameGray)
 
 original = currentFrameGray.copy()
 lowcut = original.mean() + 1.0 * original.std()
@@ -1183,26 +1179,26 @@ for contour in contours:
     raft_centers = np.array(centers, dtype=int)
     raft_radii = np.array(radii, dtype=int)
 
-# raft_centers, raft_radii = DetectByContours(currentFrameGray)
+# raft_centers, raft_radii = detect_by_contours(currentFrameGray)
 
 
 # draw circles. 
 curr_frame_draw = currentFrameBGR.copy()
-curr_frame_draw = DrawRafts(curr_frame_draw, raft_centers, raft_radii, num_of_rafts)
+curr_frame_draw = draw_rafts(curr_frame_draw, raft_centers, raft_radii, num_of_rafts)
 # curr_frame_draw = cv.circle(curr_frame_draw, (int(currentFrameGray.shape[1]/2), int(currentFrameGray.shape[0]/2)), lookup_radius, (255,0,0), int(2))
-curr_frame_draw = DrawRaftNumber(curr_frame_draw, raft_centers, num_of_rafts)
+curr_frame_draw = draw_raft_number(curr_frame_draw, raft_centers, num_of_rafts)
 # cv.imshow('analyzed image with circles', curr_frame_draw)
 plt.imshow(curr_frame_draw[:, :, ::-1])
 
 curr_frame_draw = currentFrameBGR.copy()
-curr_frame_draw = DrawRafts(curr_frame_draw, (currentFrameGray.shape[1] / 2, currentFrameGray.shape[0] / 2),
-                            lookup_radius, 1)
+curr_frame_draw = draw_rafts(curr_frame_draw, (currentFrameGray.shape[1] / 2, currentFrameGray.shape[0] / 2),
+                             lookup_radius, 1)
 cv.imshow('analyzed image', curr_frame_draw)
 
 # %% debugging code for getting the rotation angle
 
 # read two frames: 
-## Reading files
+# Reading files
 tiffFileList = glob.glob('*.tiff')
 tiffFileList.sort()
 frameNum1 = 2
@@ -1215,28 +1211,22 @@ plt.imshow(frame1Gray, 'gray')
 plt.figure()
 plt.imshow(frame2Gray, 'gray')
 
-raft_centers_1, raft_radii_1, raft_count_1 = FindCirclesAdaptive(frame1Gray, num_of_rafts, thres_value=thres_value,
-                                                                 adaptiveThres_blocksize=adaptiveThres_blocksize,
-                                                                 adaptiveThres_const=adaptiveThres_const,
-                                                                 radii_Hough=radii_Hough, sigma_Canny=sigma_Canny,
-                                                                 low_threshold_canny=low_threshold_canny,
-                                                                 high_threshold_canny=high_threshold_canny,
-                                                                 min_sep_dist=min_sep_dist, lookup_radius=lookup_radius,
-                                                                 raft_center_threshold=raft_center_threshold,
-                                                                 topLeft_x=topLeft_x, topLeft_y=topLeft_y,
-                                                                 width_x=width_x, height_y=height_y, error_message=' ')
+raft_centers_1, raft_radii_1, raft_count_1 = find_circles_adaptive(frame1Gray, num_of_rafts, radii_hough=radii_Hough,
+                                                                   adaptive_thres_blocksize=adaptiveThres_blocksize,
+                                                                   adaptive_thres_const=adaptiveThres_const,
+                                                                   min_sep_dist=min_sep_dist,
+                                                                   raft_center_threshold=raft_center_threshold,
+                                                                   topLeft_x=topLeft_x, topLeft_y=topLeft_y,
+                                                                   width_x=width_x, height_y=height_y)
 print(raft_count_1)
 
-raft_centers_2, raft_radii_2, raft_count_2 = FindCirclesAdaptive(frame2Gray, num_of_rafts, thres_value=thres_value,
-                                                                 adaptiveThres_blocksize=adaptiveThres_blocksize,
-                                                                 adaptiveThres_const=adaptiveThres_const,
-                                                                 radii_Hough=radii_Hough, sigma_Canny=sigma_Canny,
-                                                                 low_threshold_canny=low_threshold_canny,
-                                                                 high_threshold_canny=high_threshold_canny,
-                                                                 min_sep_dist=min_sep_dist, lookup_radius=lookup_radius,
-                                                                 raft_center_threshold=raft_center_threshold,
-                                                                 topLeft_x=topLeft_x, topLeft_y=topLeft_y,
-                                                                 width_x=width_x, height_y=height_y, error_message=' ')
+raft_centers_2, raft_radii_2, raft_count_2 = find_circles_adaptive(frame2Gray, num_of_rafts, radii_hough=radii_Hough,
+                                                                   adaptive_thres_blocksize=adaptiveThres_blocksize,
+                                                                   adaptive_thres_const=adaptiveThres_const,
+                                                                   min_sep_dist=min_sep_dist,
+                                                                   raft_center_threshold=raft_center_threshold,
+                                                                   topLeft_x=topLeft_x, topLeft_y=topLeft_y,
+                                                                   width_x=width_x, height_y=height_y)
 print(raft_count_2)
 
 # setting parameters and initialize dataset
@@ -1253,7 +1243,7 @@ raftInitialOrientation = 0
 # tracking part
 raftLocations[:, 0, :] = raft_centers_1
 raftRadii[:, 0] = raft_radii_1
-targetID = TrackingRafts(raft_centers_1, raft_centers_2, numOfRafts)
+targetID = tracking_rafts(raft_centers_1, raft_centers_2)
 for raftID in np.arange(numOfRafts):
     raftLocations[raftID, 1, :] = raft_centers_2[targetID[raftID], :]
     raftRadii[raftID, 1] = raft_radii_2[targetID[raftID]]
@@ -1261,34 +1251,36 @@ for raftID in np.arange(numOfRafts):
 # setting the orientation in the first image as initial orientation 0
 currentFrameNum = 0
 for raftID in np.arange(numOfRafts):
-    firstImages[raftID, :, :] = CropImage(frame1Gray, raftLocations[raftID, currentFrameNum, :], sizeOfCroppedRaftImage)
+    firstImages[raftID, :, :] = crop_image(frame1Gray, raftLocations[raftID, currentFrameNum, :],
+                                           sizeOfCroppedRaftImage)
     raftOrientations[raftID, currentFrameNum] = raftInitialOrientation
 frame1Draw = frame1BGR.copy()
-frame1Draw = DrawRaftOrientations(frame1Draw, raftLocations[:, currentFrameNum, :],
-                                  raftOrientations[:, currentFrameNum], raftRadii[:, currentFrameNum], numOfRafts)
+frame1Draw = draw_raft_orientations(frame1Draw, raftLocations[:, currentFrameNum, :],
+                                    raftOrientations[:, currentFrameNum], raftRadii[:, currentFrameNum], numOfRafts)
 plt.figure()
 plt.imshow(frame1Draw[:, :, ::-1])
 
 # obtain the orientation of rafts in the second image
 currentFrameNum = 1
 for raftID in np.arange(numOfRafts):
-    currImages[raftID, :, :] = CropImage(frame2Gray, raftLocations[raftID, currentFrameNum, :], sizeOfCroppedRaftImage)
-    rotationAngle = GetRotationAngle(firstImages[raftID, :, :], currImages[raftID, :, :])
+    currImages[raftID, :, :] = crop_image(frame2Gray, raftLocations[raftID, currentFrameNum, :], sizeOfCroppedRaftImage)
+    rotationAngle = get_rotation_angle(firstImages[raftID, :, :], currImages[raftID, :, :])
     raftOrientations[raftID, currentFrameNum] = raftOrientations[raftID, 0] + rotationAngle
     while raftOrientations[raftID, currentFrameNum] < 0:
         raftOrientations[raftID, currentFrameNum] = raftOrientations[raftID, currentFrameNum] + 360
     while raftOrientations[raftID, currentFrameNum] > 360:
         raftOrientations[raftID, currentFrameNum] = raftOrientations[raftID, currentFrameNum] - 360
 frame2Draw = frame2BGR.copy()
-frame2Draw = DrawRaftOrientations(frame2Draw, raftLocations[:, currentFrameNum, :],
-                                  raftOrientations[:, currentFrameNum], raftRadii[:, currentFrameNum], numOfRafts)
+frame2Draw = draw_raft_orientations(frame2Draw, raftLocations[:, currentFrameNum, :],
+                                    raftOrientations[:, currentFrameNum], raftRadii[:, currentFrameNum], numOfRafts)
 plt.figure()
 plt.imshow(frame2Draw[:, :, ::-1])
 
 
-def GetRotationAngle(prev_image, curr_image):
-    ''' extract the angle of rotation theta between two frames
-    '''
+def get_rotation_angle(prev_image, curr_image):
+    """
+    extract the angle of rotation theta between two frames
+    """
 
     max_value = np.amax(prev_image)
 
@@ -1348,7 +1340,7 @@ curr_image = currImages[raftID, :, :]
 plt.figure()
 plt.imshow(curr_image, 'gray')
 
-rotationAngle = GetRotationAngle(prev_image, curr_image)
+rotationAngle = get_rotation_angle(prev_image, curr_image)
 
 max_value = np.amax(prev_image)
 
@@ -1419,10 +1411,10 @@ plt.imshow(firstImages[0, :, :], 'gray')
 
 plt.imshow(currImages[0, :, :], 'gray')
 
-# %% using substraction to evulate the number of rafts that are stepped out.
+# %% using subtraction to evaluate the number of rafts that are stepped out.
 
 # read two frames: 
-## Reading files
+# Reading files
 tiffFileList = glob.glob('*.tiff')
 tiffFileList.sort()
 frameNum1 = 2
@@ -1436,28 +1428,21 @@ frame2Gray = frame2BGR[:, :, 1]
 # plt.figure()
 # plt.imshow(frame2Gray, 'gray')
 
-raft_centers_1, raft_radii_1, raft_count_1 = FindCirclesAdaptive(frame1Gray, num_of_rafts, thres_value=thres_value,
-                                                                 adaptiveThres_blocksize=adaptiveThres_blocksize,
-                                                                 adaptiveThres_const=adaptiveThres_const,
-                                                                 radii_Hough=radii_Hough, sigma_Canny=sigma_Canny,
-                                                                 low_threshold_canny=low_threshold_canny,
-                                                                 high_threshold_canny=high_threshold_canny,
-                                                                 min_sep_dist=min_sep_dist, lookup_radius=lookup_radius,
-                                                                 raft_center_threshold=raft_center_threshold,
-                                                                 topLeft_x=topLeft_x, topLeft_y=topLeft_y,
-                                                                 width_x=width_x, height_y=height_y, error_message=' ')
+raft_centers_1, raft_radii_1, raft_count_1 = \
+    find_circles_adaptive(frame1Gray, num_of_rafts, radii_hough=radii_Hough,
+                          adaptive_thres_blocksize=adaptiveThres_blocksize,
+                          adaptive_thres_const=adaptiveThres_const,
+                          min_sep_dist=min_sep_dist, raft_center_threshold=raft_center_threshold,
+                          topLeft_x=topLeft_x, topLeft_y=topLeft_y, width_x=width_x, height_y=height_y)
 print(raft_count_1)
 
-raft_centers_2, raft_radii_2, raft_count_2 = FindCirclesAdaptive(frame2Gray, num_of_rafts, thres_value=thres_value,
-                                                                 adaptiveThres_blocksize=adaptiveThres_blocksize,
-                                                                 adaptiveThres_const=adaptiveThres_const,
-                                                                 radii_Hough=radii_Hough, sigma_Canny=sigma_Canny,
-                                                                 low_threshold_canny=low_threshold_canny,
-                                                                 high_threshold_canny=high_threshold_canny,
-                                                                 min_sep_dist=min_sep_dist, lookup_radius=lookup_radius,
-                                                                 raft_center_threshold=raft_center_threshold,
-                                                                 topLeft_x=topLeft_x, topLeft_y=topLeft_y,
-                                                                 width_x=width_x, height_y=height_y, error_message=' ')
+raft_centers_2, raft_radii_2, raft_count_2 = \
+    find_circles_adaptive(frame2Gray, num_of_rafts, radii_hough=radii_Hough,
+                          adaptive_thres_blocksize=adaptiveThres_blocksize,
+                          adaptive_thres_const=adaptiveThres_const,
+                          min_sep_dist=min_sep_dist,
+                          raft_center_threshold=raft_center_threshold,
+                          topLeft_x=topLeft_x, topLeft_y=topLeft_y, width_x=width_x, height_y=height_y)
 print(raft_count_2)
 
 # initialize key varialbes
@@ -1472,20 +1457,21 @@ currImages = np.zeros((numOfRafts, sizeOfCroppedRaftImage, sizeOfCroppedRaftImag
 
 # tracking the rafts
 raftLocations[:, 0, :] = raft_centers_1
-targetID = TrackingRafts(raft_centers_1, raft_centers_2, numOfRafts)
+targetID = tracking_rafts(raft_centers_1, raft_centers_2)
 for raftID in np.arange(numOfRafts):
     raftLocations[raftID, 1, :] = raft_centers_2[targetID[raftID], :]
 
 # crop and store firstImages
 currentFrameNum = 0
 for raftID in np.arange(numOfRafts):
-    firstImages[raftID, :, :] = CropImage(frame1Gray, raftLocations[raftID, currentFrameNum, :], sizeOfCroppedRaftImage)
+    firstImages[raftID, :, :] = crop_image(frame1Gray, raftLocations[raftID, currentFrameNum, :],
+                                           sizeOfCroppedRaftImage)
 frame1Draw = frame1BGR.copy()
 
 # crop and store currImages
 currentFrameNum = 1
 for raftID in np.arange(numOfRafts):
-    currImages[raftID, :, :] = CropImage(frame2Gray, raftLocations[raftID, currentFrameNum, :], sizeOfCroppedRaftImage)
+    currImages[raftID, :, :] = crop_image(frame2Gray, raftLocations[raftID, currentFrameNum, :], sizeOfCroppedRaftImage)
 
 # calculate the difference between two successive frames with possible shifts
 for raftID in np.arange(numOfRafts):
@@ -1545,14 +1531,15 @@ plt.imshow(diff_image, 'gray')
 
 plt.figure()
 curr_frame_draw = frame1BGR.copy()
-curr_frame_draw = DrawRafts(curr_frame_draw, raft_centers_1, raft_radii_1, num_of_rafts)
-# curr_frame_draw = cv.circle(curr_frame_draw, (int(currentFrameGray.shape[1]/2), int(currentFrameGray.shape[0]/2)), lookup_radius, (255,0,0), int(2))
-curr_frame_draw = DrawRaftNumber(curr_frame_draw, raft_centers_1, num_of_rafts)
+curr_frame_draw = draw_rafts(curr_frame_draw, raft_centers_1, raft_radii_1, num_of_rafts)
+# curr_frame_draw = cv.circle(curr_frame_draw, (int(currentFrameGray.shape[1]/2), int(currentFrameGray.shape[0]/2)),
+#                             lookup_radius, (255,0,0), int(2))
+curr_frame_draw = draw_raft_number(curr_frame_draw, raft_centers_1, num_of_rafts)
 # cv.imshow('analyzed image with circles', curr_frame_draw)
 plt.imshow(curr_frame_draw[:, :, ::-1])
 
 # %% track circle using Hungarian Algorithm; effused rafts function definition
-## Reading files
+# Reading files
 tiffFileList = glob.glob('*.tiff')
 tiffFileList.sort()
 prevFrameNum = 0
@@ -1601,36 +1588,31 @@ curr_flags = np.zeros(num_of_rafts, dtype=int)
 curr_centers_tracked = np.zeros((num_of_rafts, 2), dtype=int)
 curr_radii_tracked = np.zeros(num_of_rafts, dtype=int)
 
-## FindCircles in the previous frame
-prev_centers, prev_radii, prev_count = FindCirclesThres(prevFrameGray, num_of_rafts, thres_value=thres_value,
-                                                        adaptiveThres_blocksize=adaptiveThres_blocksize,
-                                                        adaptiveThres_const=adaptiveThres_const,
-                                                        radii_Hough=radii_Hough, sigma_Canny=sigma_Canny,
-                                                        low_threshold_canny=low_threshold_canny,
-                                                        high_threshold_canny=high_threshold_canny,
-                                                        min_sep_dist=min_sep_dist, lookup_radius=lookup_radius,
-                                                        raft_center_threshold=raft_center_threshold,
-                                                        topLeft_x=topLeft_x, topLeft_y=topLeft_y, width_x=width_x,
-                                                        height_y=height_y, error_message=' ')
-## FindCircles in the current frame
-curr_centers, curr_radii, curr_count = FindCirclesAdaptive(currFrameGray, num_of_rafts, thres_value=thres_value,
-                                                           adaptiveThres_blocksize=adaptiveThres_blocksize,
-                                                           adaptiveThres_const=adaptiveThres_const,
-                                                           radii_Hough=radii_Hough, sigma_Canny=sigma_Canny,
-                                                           low_threshold_canny=low_threshold_canny,
-                                                           high_threshold_canny=high_threshold_canny,
-                                                           min_sep_dist=min_sep_dist, lookup_radius=lookup_radius,
-                                                           raft_center_threshold=raft_center_threshold,
-                                                           topLeft_x=topLeft_x, topLeft_y=topLeft_y, width_x=width_x,
-                                                           height_y=height_y, error_message=' ')
+# FindCircles in the previous frame
+prev_centers, prev_radii, prev_count = find_circles_thres(prevFrameGray, num_of_rafts, radii_Hough=radii_Hough,
+                                                          thres_value=thres_value, sigma_Canny=sigma_Canny,
+                                                          low_threshold_canny=low_threshold_canny,
+                                                          high_threshold_canny=high_threshold_canny,
+                                                          min_sep_dist=min_sep_dist,
+                                                          raft_center_threshold=raft_center_threshold,
+                                                          topLeft_x=topLeft_x, topLeft_y=topLeft_y, width_x=width_x,
+                                                          height_y=height_y)
+# FindCircles in the current frame
+curr_centers, curr_radii, curr_count = find_circles_adaptive(currFrameGray, num_of_rafts, radii_hough=radii_Hough,
+                                                             adaptive_thres_blocksize=adaptiveThres_blocksize,
+                                                             adaptive_thres_const=adaptiveThres_const,
+                                                             min_sep_dist=min_sep_dist,
+                                                             raft_center_threshold=raft_center_threshold,
+                                                             topLeft_x=topLeft_x, topLeft_y=topLeft_y, width_x=width_x,
+                                                             height_y=height_y)
 
 boudnary_x = topLeft_x + width_x // 2
 
 
-def CountingEffusedRafts(prev_centers, prev_count, curr_centers, curr_count, boundary_x, max_dispacement):
-    '''
+def counting_effused_rafts(prev_centers, prev_count, curr_centers, curr_count, boundary_x, max_dispacement):
+    """
     test if the raft crosses the boundary of container
-    '''
+    """
     effused_raft_change = 0
     costMatrix = scipy_distance.cdist(prev_centers[:prev_count], curr_centers[:curr_count], 'euclidean')
     #  note that row index refers to previous raft number, column index refers to current raft number
@@ -1647,15 +1629,15 @@ def CountingEffusedRafts(prev_centers, prev_count, curr_centers, curr_count, bou
     return effused_raft_change
 
 
-# targetID = TrackingRafts(prev_centers, curr_centers, num_of_rafts)
+# targetID = tracking_rafts(prev_centers, curr_centers, num_of_rafts)
 
 costMatrix = scipy_distance.cdist(prev_centers[:prev_count], curr_centers[:curr_count], 'euclidean')
 row_ind, col_ind = linear_sum_assignment(costMatrix)
 
 targetID = col_ind
 
-## Hungarian algorithm to track
-# def TrackingRafts(prev_rafts_locations, detected_centers):
+# Hungarian algorithm to track
+# def tracking_rafts(prev_rafts_locations, detected_centers):
 #    ''' sort the detected_centers according to the locations of rafts in the previous frame
 #    
 #    the row number of col_ind is raft number in prev_rafts_locations, 
@@ -1667,8 +1649,8 @@ targetID = col_ind
 #    return col_ind
 #
 #
-## old tracking algorithm based on minimal distance. 
-# def TrackingRafts(prev_rafts_locations, detected_centers, num_of_rafts):
+# old tracking algorithm based on minimal distance.
+# def tracking_rafts(prev_rafts_locations, detected_centers, num_of_rafts):
 #    ''' sort the detected_centers according to the locations of rafts in the previous frame
 #    '''
 #    target_id = np.zeros((num_of_rafts,1), dtype = int)
@@ -1676,7 +1658,7 @@ targetID = col_ind
 #    for prev_raft_id in np.arange(num_of_rafts): # looping through the rafs location in the prev_rafts_locations
 #        min_seperation = 10000
 #        for test_id in np.arange(num_of_rafts): # looping through the rafs location in the detected_centers
-#            seperation = CalculateDistance(prev_rafts_locations[prev_raft_id,:], detected_centers[test_id,:])
+#            seperation = calculate_distance(prev_rafts_locations[prev_raft_id,:], detected_centers[test_id,:])
 #            if seperation < min_seperation:
 #                min_seperation = seperation
 #                target_id[prev_raft_id] = test_id
@@ -1693,15 +1675,17 @@ for raftID in np.arange(num_of_rafts):
         curr_radii_tracked[raftID] = curr_radii[raftID]
 
 prev_frame_draw = prevFrameBGR.copy()
-prev_frame_draw = DrawRafts(prev_frame_draw, prev_centers, prev_radii, num_of_rafts)
-# prev_frame_draw = cv.circle(prev_frame_draw, (int(prevFrameGray.shape[1]/2), int(prevFrameGray.shape[0]/2)), lookup_radius, (255,0,0), int(2))
-prev_frame_draw = DrawRaftNumber(prev_frame_draw, prev_centers, num_of_rafts)
+prev_frame_draw = draw_rafts(prev_frame_draw, prev_centers, prev_radii, num_of_rafts)
+# prev_frame_draw = cv.circle(prev_frame_draw, (int(prevFrameGray.shape[1]/2),
+#                                               int(prevFrameGray.shape[0]/2)), lookup_radius, (255,0,0), int(2))
+prev_frame_draw = draw_raft_number(prev_frame_draw, prev_centers, num_of_rafts)
 # cv.imshow('analyzed image with first two circles', prev_frame_draw)
 plt.imshow(prev_frame_draw[:, :, ::-1])
 
 curr_frame_draw = currFrameBGR.copy()
-curr_frame_draw = DrawRafts(curr_frame_draw, curr_centers_tracked, curr_radii_tracked, num_of_rafts)
-# curr_frame_draw = cv.circle(curr_frame_draw, (int(currFrameGray.shape[1]/2), int(currFrameGray.shape[0]/2)), lookup_radius, (255,0,0), int(2))
-curr_frame_draw = DrawRaftNumber(curr_frame_draw, curr_centers_tracked, num_of_rafts)
+curr_frame_draw = draw_rafts(curr_frame_draw, curr_centers_tracked, curr_radii_tracked, num_of_rafts)
+# curr_frame_draw = cv.circle(curr_frame_draw, (int(currFrameGray.shape[1]/2),
+#                                               int(currFrameGray.shape[0]/2)), lookup_radius, (255,0,0), int(2))
+curr_frame_draw = draw_raft_number(curr_frame_draw, curr_centers_tracked, num_of_rafts)
 # cv.imshow('analyzed image with first two circles', curr_frame_draw)
 plt.imshow(curr_frame_draw[:, :, ::-1])

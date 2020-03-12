@@ -1647,7 +1647,9 @@ elif len(shelveDataFileExist) == 0:
 dfEntropyNeighborDistTimeByWindowSizes = pd.DataFrame(columns = ['timeDifferenceInSeconds'])
 dfEntropyNeighborCountTimeByWindowSizes = pd.DataFrame(columns = ['timeDifferenceInSeconds'])
 dfEntropyLocalDensitiesTimeByWindowSizes = pd.DataFrame(columns = ['timeDifferenceInSeconds'])
-dfEntropyByWindowSizesSummary = pd.DataFrame(columns = ['windowSizes', 'entropyNeighborDist_mean', 'entropyNeighborDist_std', 
+dfEntropyByWindowSizesSummary = pd.DataFrame(columns = ['windowSizes', 'numOfRaftsInSamplingWindows_mean',
+                                                        'numOfRaftsInSamplingWindows_std',
+                                                        'entropyNeighborDist_mean', 'entropyNeighborDist_std', 
                                                         'entropyNeighborCount_mean', 'entropyNeighborCount_std',
                                                         'entropyLocalDensities_mean', 'entropyLocalDensities_std'])
 
@@ -1664,6 +1666,8 @@ for windowID, samplingWindowRadius in enumerate(samplingWindowSizes):
     dfEntropyNeighborDistTimeByWindowSizes[columnName] = entropyByNeighborDistancesInWindows[:, windowID]
     dfEntropyNeighborCountTimeByWindowSizes[columnName] = entropyByNeighborCountInWindows[:, windowID]
     dfEntropyLocalDensitiesTimeByWindowSizes[columnName] = entropyByLocalDensitiesInWindows[:, windowID]
+    dfEntropyByWindowSizesSummary.loc[windowID, 'numOfRaftsInSamplingWindows_mean'] = numOfRaftsInSamplingWindows[:, windowID].mean()
+    dfEntropyByWindowSizesSummary.loc[windowID, 'numOfRaftsInSamplingWindows_std'] = numOfRaftsInSamplingWindows[:, windowID].std()
     dfEntropyByWindowSizesSummary.loc[windowID, 'entropyNeighborDist_mean'] = entropyByNeighborDistancesInWindows[:, windowID].mean()
     dfEntropyByWindowSizesSummary.loc[windowID, 'entropyNeighborDist_std'] = entropyByNeighborDistancesInWindows[:, windowID].std()
     dfEntropyByWindowSizesSummary.loc[windowID, 'entropyNeighborCount_mean'] = entropyByNeighborCountInWindows[:, windowID].mean()
@@ -1685,12 +1689,12 @@ dfEntropyNeighborCountTimeByWindowSizes.to_csv(dataFileName + '_neighborCount.cs
 dfEntropyLocalDensitiesTimeByWindowSizes.to_csv(dataFileName + '_localDensities.csv',index = False)
 
 
-dfEntropyByWindowSizesSummary.plot(x = 'windowSizes', y = 'entropyNeighborDist_mean')
-dfEntropyByWindowSizesSummary.plot(x = 'windowSizes', y = 'entropyNeighborDist_std')
-dfEntropyByWindowSizesSummary.plot(x = 'windowSizes', y = 'entropyNeighborCount_mean')
-dfEntropyByWindowSizesSummary.plot(x = 'windowSizes', y = 'entropyNeighborCount_std')
-dfEntropyByWindowSizesSummary.plot(x = 'windowSizes', y = 'entropyLocalDensities_mean')
-dfEntropyByWindowSizesSummary.plot(x = 'windowSizes', y = 'entropyLocalDensities_std')
+dfEntropyByWindowSizesSummary.plot(x = 'numOfRaftsInSamplingWindows_mean', y = 'entropyNeighborDist_mean')
+dfEntropyByWindowSizesSummary.plot(x = 'numOfRaftsInSamplingWindows_mean', y = 'entropyNeighborDist_std')
+dfEntropyByWindowSizesSummary.plot(x = 'numOfRaftsInSamplingWindows_mean', y = 'entropyNeighborCount_mean')
+dfEntropyByWindowSizesSummary.plot(x = 'numOfRaftsInSamplingWindows_mean', y = 'entropyNeighborCount_std')
+dfEntropyByWindowSizesSummary.plot(x = 'numOfRaftsInSamplingWindows_mean', y = 'entropyLocalDensities_mean')
+dfEntropyByWindowSizesSummary.plot(x = 'numOfRaftsInSamplingWindows_mean', y = 'entropyLocalDensities_std')
 
 
 
