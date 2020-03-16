@@ -109,7 +109,8 @@ plt.imshow(image_thres, 'gray')
 # plt.imshow(image_dist_transform, 'gray')
 
 # canny edge to detect edge
-# image_edges = canny(image_thres, sigma = sigma_Canny, low_threshold = low_threshold_canny, high_threshold = high_threshold_canny)
+# image_edges = canny(image_thres, sigma=sigma_Canny, low_threshold=low_threshold_canny,
+#                     high_threshold=high_threshold_canny)
 # plt.imshow(image_edges,'gray')
 
 # hough transform to find circles
@@ -121,25 +122,28 @@ accums, cx, cy, radii = hough_circle_peaks(hough_results, np.arange(*radii_Hough
 # raft_centers[0,1] = cy[0]
 # raft_radii[0] = radii[0]
 # raft_centerPixelValue[0] = currentFrameGrayCropped[cy[0], cx[0]]
-# raft_InscribedSquareMeanValue[0] = currentFrameGrayCropped[cy[0]-radii[0]//2 : cy[0]+radii[0]//2 , cx[0]-radii[0]//2:cx[0]+radii[0]//2].mean()
+# raft_InscribedSquareMeanValue[0] = \
+#     currentFrameGrayCropped[cy[0]-radii[0]//2:cy[0]+radii[0]//2, cx[0]-radii[0]//2:cx[0]+radii[0]//2].mean()
 # raft_accumScore[0] = accums[0]
 # raft_thresholdValues[0] = thres_value
 raft_count = 0  # starting from 1!
 
-# remove circles that belong to the same raft and circles that happened to be in between rafts and rafts outside lookup radius
+# remove circles that belong to the same raft and circles
+# that happened to be in between rafts and rafts outside lookup radius
 t1 = time.perf_counter()
 for accumScore, detected_cx, detected_cy, detected_radius in zip(accums, cx, cy, radii):
     new_raft = 1
     if image_cropped[detected_cy, detected_cx] < raft_center_threshold:
         new_raft = 0
     elif image_cropped[detected_cy - detected_radius // 2: detected_cy + detected_radius // 2,
-         detected_cx - detected_radius // 2:detected_cx + detected_radius // 2].mean() < raft_center_threshold:
+                       detected_cx - detected_radius // 2:detected_cx + detected_radius // 2].mean() \
+            < raft_center_threshold:
         new_raft = 0
     #    elif  (detected_cx - width_x/2)**2 +  (detected_cy - height_y/2)**2 > lookup_radius**2:
     #        new_raft = 0
     else:
-        costMatrix = scipy_distance.cdist(np.array([detected_cx, detected_cy], ndmin=2), raft_centers[:raft_count, :],
-                                          'euclidean')
+        costMatrix = scipy_distance.cdist(np.array([detected_cx, detected_cy], ndmin=2),
+                                          raft_centers[:raft_count, :], 'euclidean')
         if np.any(costMatrix < min_sep_dist):  # raft still exist
             new_raft = 0
     if new_raft == 1:
@@ -238,14 +242,15 @@ for contour in contours:
 # draw circles.
 curr_frame_draw = currentFrameBGR.copy()
 curr_frame_draw = fsr.draw_rafts(curr_frame_draw, raft_centers, raft_radii, num_of_rafts)
-# curr_frame_draw = cv.circle(curr_frame_draw, (int(currentFrameGray.shape[1]/2), int(currentFrameGray.shape[0]/2)), lookup_radius, (255,0,0), int(2))
+# curr_frame_draw = cv.circle(curr_frame_draw, (int(currentFrameGray.shape[1]/2), int(currentFrameGray.shape[0]/2)),
+#                             lookup_radius, (255, 0, 0), int(2))
 curr_frame_draw = fsr.draw_raft_number(curr_frame_draw, raft_centers, num_of_rafts)
 # cv.imshow('analyzed image with circles', curr_frame_draw)
 plt.imshow(curr_frame_draw[:, :, ::-1])
 
 curr_frame_draw = currentFrameBGR.copy()
 curr_frame_draw = fsr.draw_rafts(curr_frame_draw, (currentFrameGray.shape[1] / 2, currentFrameGray.shape[0] / 2),
-                             lookup_radius, 1)
+                                 lookup_radius, 1)
 cv.imshow('analyzed image', curr_frame_draw)
 
 # %% debugging code for getting the rotation angle
@@ -320,7 +325,7 @@ currentFrameNum = 1
 for raftID in np.arange(numOfRafts):
     currImages[raftID, :, :] = fsr.crop_image(frame2Gray, raftLocations[raftID, currentFrameNum, :],
                                               sizeOfCroppedRaftImage)
-    rotationAngle = fsr.get_rotation_angle(firstImages[raftID, :, :], currImages[raftID, :, :])
+    rotationAngle = fsr.get_rotation_angle(firstImages[raftID, :, :], currImages[raftID, :, :], 15)
     raftOrientations[raftID, currentFrameNum] = raftOrientations[raftID, 0] + rotationAngle
     while raftOrientations[raftID, currentFrameNum] < 0:
         raftOrientations[raftID, currentFrameNum] = raftOrientations[raftID, currentFrameNum] + 360
@@ -381,7 +386,7 @@ def get_rotation_angle(prev_image, curr_image):
 
     theta = - np.arctan2(vector_transformed[1, 0, 1] - vector_transformed[0, 0, 1],
                          vector_transformed[1, 0, 0] - vector_transformed[0, 0, 0]) * 180 / np.pi
-    # negative sign is to make the sign of the angle the same as in rhino, i.e. counter-clock wise from x-axis is positive
+    # negative sign is to make the sign of the angle in the right-handed coordinate
 
     return theta
 
@@ -670,17 +675,17 @@ def counting_effused_rafts(prev_centers, prev_count, curr_centers, curr_count, b
     test if the raft crosses the boundary of container
     """
     effused_raft_change = 0
-    costMatrix = scipy_distance.cdist(prev_centers[:prev_count], curr_centers[:curr_count], 'euclidean')
+    cost_matrix = scipy_distance.cdist(prev_centers[:prev_count], curr_centers[:curr_count], 'euclidean')
     #  note that row index refers to previous raft number, column index refers to current raft number
 
     # select the boundary crossing to be in the middle of the cropped image, so only deals with existing rafts
-    for raftID in np.arange(prev_count):
-        if np.any(costMatrix[raftID, :] < max_displacement):  # raft still exist
-            curr_raftID = np.nonzero(costMatrix[raftID, :] < max_displacement)[0][
+    for raft_id in np.arange(prev_count):
+        if np.any(cost_matrix[raft_id, :] < max_displacement):  # raft still exist
+            curr_raft_id = np.nonzero(cost_matrix[raft_id, :] < max_displacement)[0][
                 0]  # [0][0] is to convert array into scalar
-            if (prev_centers[raftID, 0] > boundary_x) and (curr_centers[curr_raftID, 0] <= boundary_x):
+            if (prev_centers[raft_id, 0] > boundary_x) and (curr_centers[curr_raft_id, 0] <= boundary_x):
                 effused_raft_change = effused_raft_change + 1
-            elif (prev_centers[raftID, 0] < boundary_x) and (curr_centers[curr_raftID, 0] >= boundary_x):
+            elif (prev_centers[raft_id, 0] < boundary_x) and (curr_centers[curr_raft_id, 0] >= boundary_x):
                 effused_raft_change = effused_raft_change - 1
     return effused_raft_change
 
@@ -745,5 +750,3 @@ curr_frame_draw = fsr.draw_rafts(curr_frame_draw, curr_centers_tracked, curr_rad
 curr_frame_draw = fsr.draw_raft_number(curr_frame_draw, curr_centers_tracked, num_of_rafts)
 # cv.imshow('analyzed image with first two circles', curr_frame_draw)
 plt.imshow(curr_frame_draw[:, :, ::-1])
-
-

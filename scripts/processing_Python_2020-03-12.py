@@ -166,8 +166,8 @@ for mainFolderID in np.arange(2, 3):
         effusedRaftCount = 0
         raftMovingToLeftCount = 0
         raftMovingToRightCount = 0
-        raftLocationsInRegion = np.zeros((maxNumOfRaftsInRegion, numOfFrames, 2),
-                                         dtype=int)  # (raftNum, frameNum, x(columns)&y(rows)
+        raftLocationsInRegion = np.zeros((maxNumOfRaftsInRegion, numOfFrames, 2), dtype=int)
+        # (raftNum, frameNum, x(columns)&y(rows)
         raftRadiiInRegion = np.zeros((maxNumOfRaftsInRegion, numOfFrames), dtype=int)
 
         # read and process the first frame
@@ -377,7 +377,7 @@ for mainFolderID in np.arange(2, 3):
                     currImages[raftID, :, :] = fsr.crop_image(currentFrameGray,
                                                               raftLocations[raftID, currentFrameNum, :],
                                                               sizeOfCroppedRaftImage)
-                    rotationAngle = fsr.get_rotation_angle(firstImages[raftID, :, :], currImages[raftID, :, :])
+                    rotationAngle = fsr.get_rotation_angle(firstImages[raftID, :, :], currImages[raftID, :, :], 15)
                     raftOrientations[raftID, currentFrameNum] = raftOrientations[raftID, 0] + rotationAngle
                     while raftOrientations[raftID, currentFrameNum] < 0:
                         raftOrientations[raftID, currentFrameNum] = raftOrientations[raftID, currentFrameNum] + 360

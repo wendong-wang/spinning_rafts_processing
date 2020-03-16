@@ -33,436 +33,23 @@ Sections:
 
 import numpy as np
 import pandas as pd
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 import time
 import cv2 as cv
-## if mpl.is_interactive() == True, plt.ioff() 
-## other useful ones: plt.close('all'); 
 
-from mpl_toolkits.mplot3d import Axes3D
+
 import scipy.io
 from scipy.io import loadmat
 from sklearn.metrics import mutual_info_score
-from scipy.spatial import distance as scipyDistance
-from scipy.spatial import Voronoi as scipyVoronoi
-from scipy.spatial import voronoi_plot_2d as scipyVoronoiPlot2D
+from scipy.spatial import distance as scipy_distance
+from scipy.spatial import Voronoi as ScipyVoronoi
 
 import progressbar
 import os
 import glob
 import shelve
 
-# for singular spectrum analysis
-from sklearn.decomposition import PCA as sklearnPCA
-import scipy.linalg as linalg
-import scipy.stats as stats
-
-
-def calculate_centers_of_mass(xAll, yAll, raftNum=1):
-    """calculate the centers of all rafts for each frame
-    
-    xAll - x position, (# of frames, # of rafts), unit: pixel
-    yAll - y position (# of frames, # of rafts)
-    """
-    numOfFrames, numOfRafts = xAll.shape
-
-    xCenters = xAll[:, 0:numOfRafts].mean(axis=1)
-    yCenters = yAll[:, 0:numOfRafts].mean(axis=1)
-
-    xRelativeToCenters = xAll - xCenters[:, np.newaxis]
-    yRelativeToCenters = yAll - yCenters[:, np.newaxis]
-
-    distancesToCenters = np.sqrt(xRelativeToCenters ** 2 + yRelativeToCenters ** 2)
-
-    orbitingAngles = np.arctan2(yRelativeToCenters, xRelativeToCenters) * 180 / np.pi
-
-    return distancesToCenters, orbitingAngles, xCenters, yCenters
-
-
-def calculate_distance(p1, p2):
-    """
-    calculate the distance between p1 and p2
-    """
-
-    dist = np.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
-
-    return dist
-
-
-def calculate_polar_angle(p1, p2):
-    """
-    calculate the polar angle of the vector from p1 to p2.
-    """
-
-    # note the negative sign before the first component, which is y component 
-    # the y in scikit-image is flipped. 
-    # it is to make the value of the angle appears natural, as in Rhino, with x-axis pointing right, and y-axis pointing up. 
-    # the range is from -pi to pi
-    angle = np.arctan2(-(p2[1] - p1[1]), (p2[0] - p1[0])) * 180 / np.pi
-
-    return angle
-
-
-def adjust_orbiting_angles(orbiting_angles_series, orbiting_angles_diff_threshold=200):
-    """
-    adjust the orbiting angles to get rid of the jump of 360 when it crosses from -180 to 180, or the reverse
-    adjust single point anormaly.
-    """
-
-    orbiting_angles_diff = np.diff(orbiting_angles_series)
-
-    index_neg = orbiting_angles_diff < -orbiting_angles_diff_threshold
-    index_pos = orbiting_angles_diff > orbiting_angles_diff_threshold
-
-    insertion_indices_neg = np.nonzero(index_neg)
-    insertion_indices_pos = np.nonzero(index_pos)
-
-    orbiting_angles_diff_corrected = orbiting_angles_diff.copy()
-    orbiting_angles_diff_corrected[insertion_indices_neg[0]] += 360
-    orbiting_angles_diff_corrected[insertion_indices_pos[0]] -= 360
-
-    orbiting_angles_corrected = orbiting_angles_series.copy()
-    orbiting_angles_corrected[1:] = orbiting_angles_diff_corrected[:]
-    orbiting_angles_adjusted = np.cumsum(orbiting_angles_corrected)
-
-    return orbiting_angles_adjusted
-
-
-def adjust_orbiting_angles2(orbiting_angles_series, orbiting_angles_diff_threshold=200):
-    """
-    2nd version of ajust_orbiting_angles
-    adjust the orbiting angles to get rid of the jump of 360
-    when it crosses from -180 to 180, or the reverse
-    orbiting_angle_series has the shape (raft num, frame num)
-    """
-
-    orbiting_angles_diff = np.diff(orbiting_angles_series, axis=1)
-
-    index_neg = orbiting_angles_diff < -orbiting_angles_diff_threshold
-    index_pos = orbiting_angles_diff > orbiting_angles_diff_threshold
-
-    insertion_indices_neg = np.nonzero(index_neg)
-    insertion_indices_pos = np.nonzero(index_pos)
-
-    orbiting_angles_diff_corrected = orbiting_angles_diff.copy()
-    orbiting_angles_diff_corrected[insertion_indices_neg[0], insertion_indices_neg[1]] += 360
-    orbiting_angles_diff_corrected[insertion_indices_pos[0], insertion_indices_pos[1]] -= 360
-
-    orbiting_angles_corrected = orbiting_angles_series.copy()
-    orbiting_angles_corrected[:, 1:] = orbiting_angles_diff_corrected[:]
-    orbiting_angles_adjusted = np.cumsum(orbiting_angles_corrected, axis=1)
-
-    return orbiting_angles_adjusted
-
-
-def MutualInfoMatrix(time_series, num_of_bins):
-    """
-    Calculate mutual information for each pair of rafts
-    
-    time_series - rows are raft numbers, and columns are times
-    numOfBins- numOfBins for calculating histogram
-    the result is in unit of bits. 
-    """
-    num_of_rafts, interval_width = time_series.shape
-    mutual_info_matrix = np.zeros((num_of_rafts, num_of_rafts))
-
-    for i in range(num_of_rafts):
-        for j in range(i + 1):
-            i0 = time_series[i, :].copy()
-            j0 = time_series[j, :].copy()
-            c_xy = np.histogram2d(i0, j0, num_of_bins)[0]
-            mi = mutual_info_score(None, None, contingency=c_xy) * np.log2(np.e)
-            # in unit of bits,  * np.log2(np.e) to convert nats to bits
-            mutual_info_matrix[i, j] = mi
-            mutual_info_matrix[j, i] = mi
-
-    return mutual_info_matrix
-
-
-def ShannonEntropy(c):
-    """calculate the Shannon entropy of 1 d data. The unit is bits """
-
-    c_normalized = c / float(np.sum(c))
-    c_normalized_nonzero = c_normalized[np.nonzero(c_normalized)]  # gives 1D array
-    H = -sum(c_normalized_nonzero * np.log2(c_normalized_nonzero))  # unit in bits
-    return H
-
-
-def FFTDistances(sampling_rate, distances):
-    ''' given sampling rate and distances, and output frequency vector and one-sided power spectrum
-        sampling_rate: unit Hz
-        distances: numpy array, unit micron
-    '''
-    #    sampling_interval = 1/sampling_rate # unit s
-    #    times = np.linspace(0,sampling_length*sampling_interval, sampling_length)
-    sampling_length = len(distances)  # total number of frames
-    fft_distances = np.fft.fft(distances)
-    P2 = np.abs(fft_distances / sampling_length)
-    P1 = P2[0:int(sampling_length / 2) + 1]
-    P1[1:-1] = 2 * P1[1:-1]  # one-sided powr spectrum
-    frequencies = sampling_rate / sampling_length * np.arange(0, int(sampling_length / 2) + 1)
-
-    return frequencies, P1
-
-
-def DrawRafts(img_bgr, rafts_loc, rafts_radii, num_of_rafts):
-    ''' draw circles around rafts
-    '''
-
-    circle_thickness = int(2)
-    circle_color = (0, 0, 255)  # openCV: BGR
-
-    output_img = img_bgr
-    for raft_id in np.arange(num_of_rafts):
-        output_img = cv.circle(output_img, (rafts_loc[raft_id, 0], rafts_loc[raft_id, 1]), rafts_radii[raft_id],
-                               circle_color, circle_thickness)
-
-    return output_img
-
-
-def DrawRaftOrientations(img_bgr, rafts_loc, rafts_ori, num_of_rafts):
-    ''' draw lines to indicte the orientation of each raft
-    '''
-
-    line_thickness = int(2)
-    line_color = (255, 0, 0)
-    line_length = 50
-
-    output_img = img_bgr
-    for raft_id in np.arange(num_of_rafts):
-        line_start = (rafts_loc[raft_id, 0], rafts_loc[raft_id, 1])
-        line_end = (int(rafts_loc[raft_id, 0] + np.cos(rafts_ori[raft_id] * np.pi / 180) * line_length),
-                    int(rafts_loc[raft_id, 1] - np.sin(rafts_ori[raft_id] * np.pi / 180) * line_length))
-        output_img = cv.line(output_img, line_start, line_end, line_color, line_thickness)
-
-    return output_img
-
-
-def DrawRaftNumber(img_bgr, rafts_loc, num_of_rafts):
-    ''' draw the raft number at the center of the rafts
-    '''
-
-    fontFace = cv.FONT_HERSHEY_SIMPLEX
-    font_scale = 0.5
-    font_color = (0, 255, 255)  # BGR
-    font_thickness = 1
-    output_img = img_bgr
-    for raft_id in np.arange(num_of_rafts):
-        textSize, _ = cv.getTextSize(str(raft_id + 1), fontFace, font_scale, font_thickness)
-        output_img = cv.putText(output_img, str(raft_id + 1),
-                                (rafts_loc[raft_id, 0] - textSize[0] // 2, rafts_loc[raft_id, 1] + textSize[1] // 2),
-                                fontFace, font_scale, font_color, font_thickness, cv.LINE_AA)
-
-    return output_img
-
-
-def DrawClusters(img_bgr, connectivity_matrix, rafts_loc):
-    ''' draw lines between centers of connected rafts
-    '''
-    line_thickness = 2
-    line_color = (0, 255, 0)
-    output_img = img_bgr
-    raftAs, raftBs = np.nonzero(connectivity_matrix)
-
-    for raftA, raftB in zip(raftAs, raftBs):
-        output_img = cv.line(output_img, (rafts_loc[raftA, 0], rafts_loc[raftA, 1]),
-                             (rafts_loc[raftB, 0], rafts_loc[raftB, 1]), line_color, line_thickness)
-
-    return output_img
-
-
-def DrawVoronoi(img_bgr, rafts_loc):
-    ''' draw Voronoi patterns
-    '''
-    points = rafts_loc
-    vor = scipyVoronoi(points)
-    output_img = img_bgr
-    # drawing Voronoi vertices
-    vertex_size = int(3)
-    vertex_color = (255, 0, 0)
-    for x, y in zip(vor.vertices[:, 0], vor.vertices[:, 1]):
-        output_img = cv.circle(output_img, (int(x), int(y)), vertex_size, vertex_color)
-
-    # drawing Voronoi edges
-    edge_color = (0, 255, 0)
-    edge_thickness = int(2)
-    for simplex in vor.ridge_vertices:
-        simplex = np.asarray(simplex)
-        if np.all(simplex >= 0):
-            output_img = cv.line(output_img, (int(vor.vertices[simplex[0], 0]), int(vor.vertices[simplex[0], 1])),
-                                 (int(vor.vertices[simplex[1], 0]), int(vor.vertices[simplex[1], 1])), edge_color,
-                                 edge_thickness)
-
-    center = points.mean(axis=0)
-    for pointidx, simplex in zip(vor.ridge_points, vor.ridge_vertices):
-        simplex = np.asarray(simplex)
-        if np.any(simplex < 0):
-            i = simplex[simplex >= 0][0]  # finite end Voronoi vertex
-            t = points[pointidx[1]] - points[pointidx[0]]  # tangent
-            t = t / np.linalg.norm(t)
-            n = np.array([-t[1], t[0]])  # normal
-            midpoint = points[pointidx].mean(axis=0)
-            far_point = vor.vertices[i] + np.sign(np.dot(midpoint - center, n)) * n * 100
-            output_img = cv.line(output_img, (int(vor.vertices[i, 0]), int(vor.vertices[i, 1])),
-                                 (int(far_point[0]), int(far_point[1])), edge_color, edge_thickness)
-    return output_img
-
-
-def DrawAtBottomLeftOfRaftNumberFloat(img_bgr, rafts_loc, neighbor_count_wt, num_of_rafts):
-    ''' write a subscript to indicate nearest neighbor count or weighted nearest neighbor count
-    '''
-    fontFace = cv.FONT_ITALIC
-    font_scale = 0.5
-    font_color = (0, 165, 255)  # BGR
-    font_thickness = 1
-    output_img = img_bgr
-    for raft_id in np.arange(num_of_rafts):
-        textSize, _ = cv.getTextSize(str(raft_id + 1), fontFace, font_scale, font_thickness)
-        output_img = cv.putText(output_img, '{:.2}'.format(neighbor_count_wt[raft_id]),
-                                (rafts_loc[raft_id, 0] + textSize[0] // 2, rafts_loc[raft_id, 1] + textSize[1]),
-                                fontFace, font_scale, font_color, font_thickness, cv.LINE_AA)
-
-    return output_img
-
-
-def DrawAtBottomLeftOfRaftNumberInteger(img_bgr, rafts_loc, neighbor_count_wt, num_of_rafts):
-    ''' write a subscript to indicate nearest neighbor count or weighted nearest neighbor count
-    '''
-    fontFace = cv.FONT_ITALIC
-    font_scale = 0.5
-    font_color = (0, 165, 255)  # BGR
-    font_thickness = 1
-    output_img = img_bgr
-    for raft_id in np.arange(num_of_rafts):
-        textSize, _ = cv.getTextSize(str(raft_id + 1), fontFace, font_scale, font_thickness)
-        output_img = cv.putText(output_img, '{:}'.format(neighbor_count_wt[raft_id]),
-                                (rafts_loc[raft_id, 0] + textSize[0] // 2, rafts_loc[raft_id, 1] + textSize[1]),
-                                fontFace, font_scale, font_color, font_thickness, cv.LINE_AA)
-
-    return output_img
-
-
-def DrawNeighborCounts(img_bgr, rafts_loc, num_of_rafts):
-    ''' draw the raft number at the center of the rafts
-    '''
-    points = rafts_loc
-    vor = scipyVoronoi(points)
-    neighborCounts = np.zeros(numOfRafts, dtype=int)
-    for raftID in range(numOfRafts):
-        neighborCounts[raftID] = np.count_nonzero(vor.ridge_points.ravel() == raftID)
-
-    fontFace = cv.FONT_ITALIC
-    font_scale = 0.5
-    font_color = (0, 165, 255)  # BGR
-    font_thickness = 1
-    output_img = img_bgr
-    for raft_id in np.arange(num_of_rafts):
-        textSize, _ = cv.getTextSize(str(raft_id + 1), fontFace, font_scale, font_thickness)
-        output_img = cv.putText(output_img, str(neighborCounts[raft_id]),
-                                (rafts_loc[raft_id, 0] + textSize[0] // 2, rafts_loc[raft_id, 1] + textSize[1]),
-                                fontFace, font_scale, font_color, font_thickness, cv.LINE_AA)
-
-    return output_img
-
-
-def PolygonArea(x, y):
-    ''' calculate the area of a polygon given the x and y coordinates of vertices
-    ref: https://stackoverflow.com/questions/24467972/calculate-area-of-polygon-given-x-y-coordinates
-    '''
-    return 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
-
-
-def SSADecompose(y, dim):
-    """
-    from Vimal
-    Singular Spectrum Analysis decomposition for a time series
-    Example:
-    -------
-    >>> import numpy as np
-    >>>
-    >>> x = np.linspace(0, 5, 1000)
-    >>> y = 2*x + 2*np.sin(5*x) + 0.5*np.random.randn(1000)
-    >>> pc, s, v = ssa(y, 15)
-    :param y: time series (array)
-    :param dim: the embedding dimension
-    :return: (pc, s, v) where
-             pc is the matrix with the principal components of y
-             s is the vector of the singular values of y given dim
-             v is the matrix of the singular vectors of y given dim
-    """
-    n = len(y)
-    t = n - (dim - 1)
-
-    yy = linalg.hankel(y, np.zeros(dim))
-    yy = yy[:-dim + 1, :] / np.sqrt(t)
-
-    # here we use gesvd driver (as in Matlab)
-    _, s, v = linalg.svd(yy, full_matrices=False, lapack_driver='gesvd')
-
-    # find principal components
-    vt = np.matrix(v).T
-    pc = np.matrix(yy) * vt
-
-    return np.asarray(pc), s, np.asarray(vt)
-
-
-def SSAReconstruct(pc, v, k):
-    """
-    from Vimal
-    Series reconstruction for given SSA decomposition using vector of components
-    Example:
-    -------
-    >>> import numpy as np
-    >>> from matplotlib import pyplot as plt
-    >>> x = np.linspace(0, 5, 1000)
-    >>> y = 2*x + 2*np.sin(5*x) + 0.5*np.random.randn(1000)
-    >>> pc, s, v = ssa(y, 15)
-    >>>
-    >>> yr = inv_ssa(pc, v, [0,1])
-    >>> plt.plot(x, yr)
-    :param pc: matrix with the principal components from SSA
-    :param v: matrix of the singular vectors from SSA
-    :param k: vector with the indices of the components to be reconstructed
-    :return: the reconstructed time series
-    """
-    if np.isscalar(k): k = [k]
-
-    if pc.ndim != 2:
-        raise ValueError('pc must be a 2-dimensional matrix')
-
-    if v.ndim != 2:
-        raise ValueError('v must be a 2-dimensional matrix')
-
-    t, dim = pc.shape
-    n_points = t + (dim - 1)
-
-    if any(filter(lambda x: dim < x or x < 0, k)):
-        raise ValueError('k must be vector of indexes from range 0..%d' % dim)
-
-    pc_comp = np.asarray(np.matrix(pc[:, k]) * np.matrix(v[:, k]).T)
-
-    xr = np.zeros(n_points)
-    times = np.zeros(n_points)
-
-    # reconstruction loop
-    for i in range(dim):
-        xr[i: t + i] = xr[i: t + i] + pc_comp[:, i]
-        times[i: t + i] = times[i: t + i] + 1
-
-    xr = (xr / times) * np.sqrt(t)
-    return xr
-
-
-def SSAFull(time_series, embedding_dim=20, reconstruct_components=np.arange(10)):
-    """
-    combine SSA decomposition and reconstruction together
-    """
-
-    pc, s, v = SSADecompose(time_series, embedding_dim)
-    time_series_reconstructed = SSAReconstruct(pc, v, reconstruct_components)
-
-    return time_series_reconstructed
+import scripts.functions_spinning_rafts as fsr
 
 
 rootFolderNameFromWindows = r'D:\\VideoProcessingFolder'  # r'E:\Data_Camera_Basler_acA800-510uc_coilSystem'
@@ -634,7 +221,7 @@ listOfNewVariablesForVelocityMSDAnalysis = ['embeddingDimension', 'reconstructio
 
 # dataID in the mainDataList corresponds to items in dataFileListExcludingPostProcessed
 for dataID in range(2, len(dataFileListExcludingPostProcessed)):
-    ######################### load variables from mainDataList
+    # load variables from mainDataList
     date = mainDataList[dataID]['date']
     batchNum = mainDataList[dataID]['batchNum']
     spinSpeed = mainDataList[dataID]['spinSpeed']
@@ -650,7 +237,8 @@ for dataID in range(2, len(dataFileListExcludingPostProcessed)):
     commentsSub = mainDataList[dataID]['commentsSub']
     raftEffused = mainDataList[dataID]['raftEffused']
 
-    #    outputDataFileName = date + '_' + str(numOfRafts) + 'Rafts_' + str(batchNum) + '_' + str(spinSpeed) + 'rps_' + str(magnification) + 'x_' + commentsSub
+    # outputDataFileName = date + '_' + str(numOfRafts) + 'Rafts_' + str(batchNum) + '_' \
+    #                      + str(spinSpeed) + 'rps_' + str(magnification) + 'x_' + commentsSub
 
     shelveDataFileName = date + '_' + str(numOfRafts) + 'Rafts_' + str(batchNum) + '_' + str(spinSpeed) + 'rps_' + str(
         magnification) + 'x_' + 'gGx_postprocessed' + str(analysisType)
@@ -658,7 +246,7 @@ for dataID in range(2, len(dataFileListExcludingPostProcessed)):
     shelveDataFileExist = glob.glob(shelveDataFileName + '.dat')  # empty list is false
 
     if not shelveDataFileExist:
-        ############################### cluster analysis
+        # cluster analysis
         if analysisType == 1 or analysisType == 2 or analysisType == 4 or analysisType == 5:
             radius = raftRadii.mean()  # pixel  check raftRadii.mean()
             scaleBar = 300 / radius / 2  # micron per pixel
@@ -670,18 +258,19 @@ for dataID in range(2, len(dataFileListExcludingPostProcessed)):
 
             # using scipy distance module
             for frameNum in np.arange(numOfFrames):
-                raftPairwiseDistances[:, :, frameNum] = scipyDistance.cdist(raftLocations[:, frameNum, :],
-                                                                            raftLocations[:, frameNum, :], 'euclidean')
-                # smallest nonzero eedistances is assigned to one raft as the pairwise distance, connected rafts will be set to 0 later
+                raftPairwiseDistances[:, :, frameNum] = scipy_distance.cdist(raftLocations[:, frameNum, :],
+                                                                             raftLocations[:, frameNum, :], 'euclidean')
+                # smallest nonzero eedistances is assigned to one raft as the pairwise distance,
+                # connected rafts will be set to 0 later
                 raftPairwiseEdgeEdgeDistancesSmallest[:, frameNum] = np.partition(raftPairwiseDistances[:, :, frameNum],
                                                                                   1, axis=1)[:, 1] - radius * 2
 
             raftPairwiseDistancesInRadius = raftPairwiseDistances / radius
 
-            # Caution: this way of determing clusters produces errors, mostly false positive. 
+            # Caution: this way of determining clusters produces errors, mostly false positive.
             connectivityThreshold = 2.3  # unit: radius
 
-            # Note that the diagonal self-distance is zero, and needs to be taken care of seperately
+            # Note that the diagonal self-distance is zero, and needs to be taken care of separately
             raftPairwiseConnectivity = np.logical_and((raftPairwiseDistancesInRadius < connectivityThreshold),
                                                       (raftPairwiseDistancesInRadius > 0)) * 1
 
@@ -720,7 +309,8 @@ for dataID in range(2, len(dataFileListExcludingPostProcessed)):
                         clusters[raftB, 0, frameNum] = clusters[raftA, 0, frameNum]
                     if (A == False) and (B == True):
                         clusters[raftA, 0, frameNum] = clusters[raftB, 0, frameNum]
-                    # if neigher is new and if their cluster numbers differ, then change the larger cluster number to the smaller one
+                    # if neither is new and if their cluster numbers differ,
+                    # then change the larger cluster number to the smaller one
                     # note that this could lead to a cluster number being jumped over
                     if (A == True) and (B == True) and (clusters[raftA, 0, frameNum] != clusters[raftB, 0, frameNum]):
                         clusterNumLarge = max(clusters[raftA, 0, frameNum], clusters[raftB, 0, frameNum])
@@ -740,12 +330,13 @@ for dataID in range(2, len(dataFileListExcludingPostProcessed)):
                 # count loners
                 numOfLoners = len(clusters[clusters[:, 1, frameNum] == 0, 1, frameNum])
                 clusterSizeCounts[1, frameNum] = numOfLoners
-                # for the rest, the number of occurrence of cluster size in the 2nd column is the cluster size times the number of clusters of that size
+                # for the rest, the number of occurrence of cluster size in the 2nd column is
+                # the cluster size times the number of clusters of that size
                 for clusterSize in np.arange(2, largestClusterSize + 1):
                     numOfClusters = len(clusters[clusters[:, 1, frameNum] == clusterSize, 1, frameNum]) / clusterSize
                     clusterSizeCounts[int(clusterSize), frameNum] = numOfClusters
 
-            # some averageing
+            # some averaging
             dummyArray = np.arange((numOfRafts + 1) * numOfFrames).reshape((numOfFrames, -1)).T
             dummyArray = np.mod(dummyArray, (numOfRafts + 1))  # rows are cluster sizes, and columns are frame numbers
             clusterSizeAvgIncludingLoners = np.average(dummyArray, axis=0, weights=clusterSizeCounts)
@@ -762,7 +353,7 @@ for dataID in range(2, len(dataFileListExcludingPostProcessed)):
             raftPairwiseEdgeEdgeDistancesSmallestStd = raftPairwiseEdgeEdgeDistancesSmallest.std() * scaleBar
             numOfLonersAvgAllFrames = clusterSizeCounts[1, :].mean()
 
-        ########################### voronoi analysis
+        # voronoi analysis
         if analysisType == 2 or analysisType == 4 or analysisType == 5:
             entropyByNeighborCount = np.zeros(numOfFrames)
             entropyByNeighborCountWeighted = np.zeros(numOfFrames)
@@ -840,11 +431,12 @@ for dataID in range(2, len(dataFileListExcludingPostProcessed)):
 
             for currentFrameNum in progressbar.progressbar(range(numOfFrames)):
                 # currentFrameNum = 0
-                vor = scipyVoronoi(raftLocations[:, currentFrameNum, :])
+                vor = ScipyVoronoi(raftLocations[:, currentFrameNum, :])
                 allVertices = vor.vertices
-                neighborPairs = vor.ridge_points  # row# is the index of a ridge, columns are the two point# that correspond to the ridge
-                ridgeVertexPairs = np.asarray(
-                    vor.ridge_vertices)  # row# is the index of a ridge, columns are two vertex# of the ridge
+                neighborPairs = vor.ridge_points
+                # row# is the index of a ridge, columns are the two point# that correspond to the ridge
+                ridgeVertexPairs = np.asarray(vor.ridge_vertices)
+                # row# is the index of a ridge, columns are two vertex# of the ridge
                 raftPairwiseDistancesMatrix = raftPairwiseDistancesInRadius[:, :, currentFrameNum]
 
                 for raftID in np.arange(numOfRafts):
@@ -860,11 +452,11 @@ for dataID in range(2, len(dataFileListExcludingPostProcessed)):
                     neighborDistances = raftPairwiseDistancesMatrix[raftID, neighborsOfOneRaft]
                     neighborDistanceAvg = neighborDistances.mean()
 
-                    ## order parameters and their spatial correlation function
+                    # order parameters and their spatial correlation function
                     raftLocation = raftLocations[raftID, currentFrameNum, :]
                     neighborLocations = raftLocations[neighborsOfOneRaft, currentFrameNum, :]
 
-                    # note the negative sign, it is to make the angle Rhino-like
+                    # note the negative sign, it is to make the angle in the right-handed coordinates
                     neighborAnglesInRad = np.arctan2(-(neighborLocations[:, 1] - raftLocation[1]),
                                                      (neighborLocations[:, 0] - raftLocation[0]))
                     neighborAnglesInDeg = neighborAnglesInRad * 180 / np.pi
@@ -888,7 +480,8 @@ for dataID in range(2, len(dataFileListExcludingPostProcessed)):
 
                         verticesOfOneRaftSorted = verticesOfOneRaft[polarAngles.argsort()]
 
-                        voronoiCellArea = PolygonArea(verticesOfOneRaftSorted[:, 0], verticesOfOneRaftSorted[:, 1])
+                        voronoiCellArea = fsr.polygon_area(verticesOfOneRaftSorted[:, 0],
+                                                           verticesOfOneRaftSorted[:, 1])
 
                         localDensity = radius * radius * np.pi / voronoiCellArea
                     else:
@@ -902,32 +495,34 @@ for dataID in range(2, len(dataFileListExcludingPostProcessed)):
 
                     # go through all ridges to calculate or assign ridge length
                     for ridgeIndexOfOneRaft, neighborID in enumerate(neighborsOfOneRaft):
-                        neighborDistance = calculate_distance(raftLocations[raftID, currentFrameNum, :],
-                                                             raftLocations[neighborID, currentFrameNum, :])
+                        neighborDistance = fsr.calculate_distance(raftLocations[raftID, currentFrameNum, :],
+                                                                  raftLocations[neighborID, currentFrameNum, :])
                         if np.all(ridgeVertexPairsOfOneRaft[ridgeIndexOfOneRaft] >= 0):
                             vertex1ID = ridgeVertexPairsOfOneRaft[ridgeIndexOfOneRaft][0]
                             vertex2ID = ridgeVertexPairsOfOneRaft[ridgeIndexOfOneRaft][1]
                             vertex1 = allVertices[vertex1ID]
                             vertex2 = allVertices[vertex2ID]
-                            ridgeLengths[ridgeIndexOfOneRaft] = calculate_distance(vertex1, vertex2)
-                            # for ridges that has one vertex outside the image (negative corrdinate)
+                            ridgeLengths[ridgeIndexOfOneRaft] = fsr.calculate_distance(vertex1, vertex2)
+                            # for ridges that has one vertex outside the image (negative coordinate)
                             # set ridge length to the be the diameter of the raft
                             if np.all(vertex1 >= 0) and np.all(vertex2 >= 0):
-                                ridgeLengthsScaled[ridgeIndexOfOneRaft] = ridgeLengths[ridgeIndexOfOneRaft] * raftRadii[
-                                    neighborID, currentFrameNum] * 2 / neighborDistance
+                                ridgeLengthsScaled[ridgeIndexOfOneRaft] = \
+                                    ridgeLengths[ridgeIndexOfOneRaft] * raftRadii[neighborID, currentFrameNum] \
+                                    * 2 / neighborDistance
                             else:
-                                ridgeLengthsScaled[ridgeIndexOfOneRaft] = raftRadii[
-                                                                              neighborID, currentFrameNum] ** 2 * 4 / neighborDistance
+                                ridgeLengthsScaled[ridgeIndexOfOneRaft] = raftRadii[neighborID, currentFrameNum] ** 2 \
+                                                                          * 4 / neighborDistance
                         else:
                             # for ridges that has one vertex in the infinity ridge vertex#< 0 (= -1)
                             # set ridge length to the be the diameter of the raft
                             ridgeLengths[ridgeIndexOfOneRaft] = raftRadii[neighborID, currentFrameNum] * 2
-                            ridgeLengthsScaled[ridgeIndexOfOneRaft] = raftRadii[
-                                                                          neighborID, currentFrameNum] ** 2 * 4 / neighborDistance
+                            ridgeLengthsScaled[ridgeIndexOfOneRaft] = \
+                                raftRadii[neighborID, currentFrameNum] ** 2 * 4 / neighborDistance
 
                     ridgeLengthsScaledNormalizedBySum = ridgeLengthsScaled / ridgeLengthsScaled.sum()
                     ridgeLengthsScaledNormalizedByMax = ridgeLengthsScaled / ridgeLengthsScaled.max()
-                    neighborCountWeighted = ridgeLengthsScaledNormalizedByMax.sum()  # assuming the neighbor having the longest ridge counts one.
+                    neighborCountWeighted = ridgeLengthsScaledNormalizedByMax.sum()
+                    # assuming the neighbor having the longest ridge counts one.
                     neighborDistanceWeightedAvg = np.average(neighborDistances,
                                                              weights=ridgeLengthsScaledNormalizedBySum)
 
@@ -991,17 +586,17 @@ for dataID in range(2, len(dataFileListExcludingPostProcessed)):
                 tetraticOrderParameterModuliiAvgs[currentFrameNum] = tetraticOrderParameterModulii.mean()
                 tetraticOrderParameterModuliiStds[currentFrameNum] = tetraticOrderParameterModulii.std()
 
-                angles = np.arange(0, 2 * np.pi,
-                                   np.pi / 3) + np.pi / 6  # + np.angle(hexaticOrderParameterAvgs[currentFrameNum]) #0
-                NDistAvg = np.asarray(
-                    neighborDistancesList).mean()  # np.asarray(neighborDistancesList).mean() # in unit of R
-                G = 2 * np.pi * np.array(
-                    (np.cos(angles), np.sin(angles))).T / NDistAvg  # np.asarray(neighborDistancesList).mean()
+                angles = np.arange(0, 2 * np.pi, np.pi / 3) + np.pi / 6
+                # + np.angle(hexaticOrderParameterAvgs[currentFrameNum]) #0
+                NDistAvg = np.asarray(neighborDistancesList).mean()
+                # np.asarray(neighborDistancesList).mean() # in unit of R
+                G = 2 * np.pi * np.array((np.cos(angles), np.sin(angles))).T / NDistAvg
+                # np.asarray(neighborDistancesList).mean()
                 cosPart = np.zeros((len(radialRangeArray), numOfRafts, len(angles)))
                 cosPartRaftCount = np.zeros(len(radialRangeArray))
-                #                tempCount = np.zeros(len(radialRangeArray))
+                # tempCount = np.zeros(len(radialRangeArray))
 
-                ## g(r) and g6(r), gG(r) for this frame
+                # g(r) and g6(r), gG(r) for this frame
                 for radialIndex, radialIntervalStart in enumerate(radialRangeArray):
                     # radialIntervalStart, radialIndex = 2, 0
                     radialIntervalEnd = radialIntervalStart + deltaR
@@ -1034,49 +629,46 @@ for dataID in range(2, len(dataFileListExcludingPostProcessed)):
                                 cosPartRaftCount[radialIndex] = cosPartRaftCount[radialIndex] + np.count_nonzero(
                                     conditionXY)
                     if np.count_nonzero(cosPart[radialIndex, :, :]) > 0:
-                        #                        tempCount[radialIndex] = np.count_nonzero(cosPart[radialIndex, :, :])
+                        # tempCount[radialIndex] = np.count_nonzero(cosPart[radialIndex, :, :])
                         spatialCorrPos[currentFrameNum, radialIndex] = cosPart[radialIndex, :, :].sum() / \
                                                                        cosPartRaftCount[radialIndex]
 
                         # g6(r), g5(r), g4(r)
-                    sumOfProductsOfPsi6 = (hexaticOrderParameterArray[js] * np.conjugate(
-                        hexaticOrderParameterArray[ks])).sum().real
-                    spatialCorrHexaOrderPara[currentFrameNum, radialIndex] = sumOfProductsOfPsi6 / (
-                                2 * np.pi * radialIntervalStart * deltaR * density * (numOfRafts - 1))
-                    sumOfProductsOfPsi5 = (pentaticOrderParameterArray[js] * np.conjugate(
-                        pentaticOrderParameterArray[ks])).sum().real
-                    spatialCorrPentaOrderPara[currentFrameNum, radialIndex] = sumOfProductsOfPsi5 / (
-                                2 * np.pi * radialIntervalStart * deltaR * density * (numOfRafts - 1))
-                    sumOfProductsOfPsi4 = (tetraticOrderParameterArray[js] * np.conjugate(
-                        tetraticOrderParameterArray[ks])).sum().real
-                    spatialCorrTetraOrderPara[currentFrameNum, radialIndex] = sumOfProductsOfPsi4 / (
-                                2 * np.pi * radialIntervalStart * deltaR * density * (numOfRafts - 1))
+                    sumOfProductsOfPsi6 = (hexaticOrderParameterArray[js] *
+                                           np.conjugate(hexaticOrderParameterArray[ks])).sum().real
+                    spatialCorrHexaOrderPara[currentFrameNum, radialIndex] = \
+                        sumOfProductsOfPsi6 / (2 * np.pi * radialIntervalStart * deltaR * density * (numOfRafts - 1))
+                    sumOfProductsOfPsi5 = (pentaticOrderParameterArray[js] *
+                                           np.conjugate(pentaticOrderParameterArray[ks])).sum().real
+                    spatialCorrPentaOrderPara[currentFrameNum, radialIndex] = \
+                        sumOfProductsOfPsi5 / (2 * np.pi * radialIntervalStart * deltaR * density * (numOfRafts - 1))
+                    sumOfProductsOfPsi4 = (tetraticOrderParameterArray[js] *
+                                           np.conjugate(tetraticOrderParameterArray[ks])).sum().real
+                    spatialCorrTetraOrderPara[currentFrameNum, radialIndex] = \
+                        sumOfProductsOfPsi4 / (2 * np.pi * radialIntervalStart * deltaR * density * (numOfRafts - 1))
                     # g6(r)/g(r); g5(r)/g(r); g4(r)/g(r)
                     if radialDistributionFunction[currentFrameNum, radialIndex] != 0:
-                        spatialCorrHexaBondOrientationOrder[currentFrameNum, radialIndex] = spatialCorrHexaOrderPara[
-                                                                                                currentFrameNum, radialIndex] / \
-                                                                                            radialDistributionFunction[
-                                                                                                currentFrameNum, radialIndex]
-                        spatialCorrPentaBondOrientationOrder[currentFrameNum, radialIndex] = spatialCorrPentaOrderPara[
-                                                                                                 currentFrameNum, radialIndex] / \
-                                                                                             radialDistributionFunction[
-                                                                                                 currentFrameNum, radialIndex]
-                        spatialCorrTetraBondOrientationOrder[currentFrameNum, radialIndex] = spatialCorrTetraOrderPara[
-                                                                                                 currentFrameNum, radialIndex] / \
-                                                                                             radialDistributionFunction[
-                                                                                                 currentFrameNum, radialIndex]
+                        spatialCorrHexaBondOrientationOrder[currentFrameNum, radialIndex] = \
+                            spatialCorrHexaOrderPara[currentFrameNum, radialIndex] / \
+                            radialDistributionFunction[currentFrameNum, radialIndex]
+                        spatialCorrPentaBondOrientationOrder[currentFrameNum, radialIndex] = \
+                            spatialCorrPentaOrderPara[currentFrameNum, radialIndex] / \
+                            radialDistributionFunction[currentFrameNum, radialIndex]
+                        spatialCorrTetraBondOrientationOrder[currentFrameNum, radialIndex] = \
+                            spatialCorrTetraOrderPara[currentFrameNum, radialIndex] / \
+                            radialDistributionFunction[currentFrameNum, radialIndex]
 
                 count1 = np.asarray(neighborCountSeries.value_counts())
-                entropyByNeighborCount[currentFrameNum] = ShannonEntropy(count1)
+                entropyByNeighborCount[currentFrameNum] = fsr.shannon_entropy(count1)
 
                 count2, _ = np.histogram(np.asarray(neighborCountWeightedList), binEdgesNeighborCountWeighted)
-                entropyByNeighborCountWeighted[currentFrameNum] = ShannonEntropy(count2)
+                entropyByNeighborCountWeighted[currentFrameNum] = fsr.shannon_entropy(count2)
 
                 count3, _ = np.histogram(np.asarray(neighborDistancesList), binEdgesNeighborDistances)
-                entropyByNeighborDistances[currentFrameNum] = ShannonEntropy(count3)
+                entropyByNeighborDistances[currentFrameNum] = fsr.shannon_entropy(count3)
 
                 count4, _ = np.histogram(np.asarray(localDensitiesList), binEdgesLocalDensities)
-                entropyByLocalDensities[currentFrameNum] = ShannonEntropy(count4)
+                entropyByLocalDensities[currentFrameNum] = fsr.shannon_entropy(count4)
 
                 neighborDistanceAvgAllRafts[currentFrameNum] = dfNeighbors['neighborDistanceAvg'].mean()
                 neighborDistanceWeightedAvgAllRafts[currentFrameNum] = dfNeighbors['neighborDistanceWeightedAvg'].mean()
@@ -1124,27 +716,31 @@ for dataID in range(2, len(dataFileListExcludingPostProcessed)):
                 tetraOrdParaOfOneRaftArrayConjugateBroadcasted = np.transpose(
                     np.broadcast_to(tetraOrdParaOfOneRaftArrayConjugate, tetraOrdParaOfOneRaftToeplitzMatrix.shape))
 
-                # multiply the two matrix so that for each column, the rows on and below the diagonal are the products of 
+                # multiply the two matrix so that for each column,
+                # the rows on and below the diagonal are the products of
                 # the conjugate of psi6(t0) and psi6(t0 + tStepSize), the tStepSize is the same the column index. 
-                hexaOrdParaOfOneRaftBroadcastedTimesToeplitz = hexaOrdParaOfOneRaftArrayConjugateBroadcasted * hexaOrdParaOfOneRaftToeplitzMatrix
-                pentaOrdParaOfOneRaftBroadcastedTimesToeplitz = pentaOrdParaOfOneRaftArrayConjugateBroadcasted * pentaOrdParaOfOneRaftToeplitzMatrix
-                tetraOrdParaOfOneRaftBroadcastedTimesToeplitz = tetraOrdParaOfOneRaftArrayConjugateBroadcasted * tetraOrdParaOfOneRaftToeplitzMatrix
+                hexaOrdParaOfOneRaftBroadcastedTimesToeplitz = \
+                    hexaOrdParaOfOneRaftArrayConjugateBroadcasted * hexaOrdParaOfOneRaftToeplitzMatrix
+                pentaOrdParaOfOneRaftBroadcastedTimesToeplitz = \
+                    pentaOrdParaOfOneRaftArrayConjugateBroadcasted * pentaOrdParaOfOneRaftToeplitzMatrix
+                tetraOrdParaOfOneRaftBroadcastedTimesToeplitz = \
+                    tetraOrdParaOfOneRaftArrayConjugateBroadcasted * tetraOrdParaOfOneRaftToeplitzMatrix
 
                 for tStepSize in np.arange(numOfFrames):
-                    temporalCorrHexaBondOrientationOrder[raftID, tStepSize] = np.average(
-                        hexaOrdParaOfOneRaftBroadcastedTimesToeplitz[tStepSize:, tStepSize])
-                    temporalCorrPentaBondOrientationOrder[raftID, tStepSize] = np.average(
-                        pentaOrdParaOfOneRaftBroadcastedTimesToeplitz[tStepSize:, tStepSize])
-                    temporalCorrTetraBondOrientationOrder[raftID, tStepSize] = np.average(
-                        tetraOrdParaOfOneRaftBroadcastedTimesToeplitz[tStepSize:, tStepSize])
+                    temporalCorrHexaBondOrientationOrder[raftID, tStepSize] = \
+                        np.average(hexaOrdParaOfOneRaftBroadcastedTimesToeplitz[tStepSize:, tStepSize])
+                    temporalCorrPentaBondOrientationOrder[raftID, tStepSize] = \
+                        np.average(pentaOrdParaOfOneRaftBroadcastedTimesToeplitz[tStepSize:, tStepSize])
+                    temporalCorrTetraBondOrientationOrder[raftID, tStepSize] = \
+                        np.average(tetraOrdParaOfOneRaftBroadcastedTimesToeplitz[tStepSize:, tStepSize])
 
             temporalCorrHexaBondOrientationOrderAvgAllRafts = temporalCorrHexaBondOrientationOrder.mean(axis=0)
             temporalCorrPentaBondOrientationOrderAvgAllRafts = temporalCorrPentaBondOrientationOrder.mean(axis=0)
             temporalCorrTetraBondOrientationOrderAvgAllRafts = temporalCorrTetraBondOrientationOrder.mean(axis=0)
 
-            ###########################  mutual information analysis
+            #  mutual information analysis
         if analysisType == 3 or analysisType == 4:
-            # the durartion for which the frames are sampled to calculate one MI
+            # the duration for which the frames are sampled to calculate one MI
             widthOfInterval = 100  # unit: number of frames,
 
             numOfBins = 16
@@ -1157,7 +753,8 @@ for dataID in range(2, len(dataFileListExcludingPostProcessed)):
             sampleFrameNums = np.arange(widthOfInterval, numOfFrames, samplingGap)
 
             # pretreatment of position data
-            raftOrbitingAnglesAdjusted = adjust_orbiting_angles2(raftOrbitingAngles, orbiting_angles_diff_threshold=200)
+            raftOrbitingAnglesAdjusted = \
+                fsr.adjust_orbiting_angles2(raftOrbitingAngles, orbiting_angles_diff_threshold=200)
             raftVelocityR = np.gradient(raftOrbitingDistances, axis=1)
             raftVelocityTheta = np.gradient(raftOrbitingAnglesAdjusted, axis=1)
             raftVelocityNormPolar = np.sqrt(
@@ -1180,50 +777,50 @@ for dataID in range(2, len(dataFileListExcludingPostProcessed)):
             mutualInfoAvgSelfMIOnly = np.zeros(10)
             mutualInfoAvgExcludingSelfMI = np.zeros(10)
 
-            ### mutual information calculation
+            # mutual information calculation
             for i, endOfInterval in enumerate(sampleFrameNums):
                 distancesMatrix = raftOrbitingDistances[:, endOfInterval - widthOfInterval:endOfInterval]
-                mutualInfoAllSamplesAllRafts[:, :, i, 0] = MutualInfoMatrix(distancesMatrix, numOfBins)
+                mutualInfoAllSamplesAllRafts[:, :, i, 0] = fsr.mutual_info_matrix(distancesMatrix, numOfBins)
 
                 angleMatrix = raftOrbitingAnglesAdjusted[:, endOfInterval - widthOfInterval:endOfInterval]
-                mutualInfoAllSamplesAllRafts[:, :, i, 1] = MutualInfoMatrix(angleMatrix, numOfBins)
+                mutualInfoAllSamplesAllRafts[:, :, i, 1] = fsr.mutual_info_matrix(angleMatrix, numOfBins)
 
                 coordinateXMatrix = raftLocations[:, endOfInterval - widthOfInterval:endOfInterval, 0]
-                mutualInfoAllSamplesAllRafts[:, :, i, 2] = MutualInfoMatrix(coordinateXMatrix, numOfBins)
+                mutualInfoAllSamplesAllRafts[:, :, i, 2] = fsr.mutual_info_matrix(coordinateXMatrix, numOfBins)
 
                 coordinateYMatrix = raftLocations[:, endOfInterval - widthOfInterval:endOfInterval, 1]
-                mutualInfoAllSamplesAllRafts[:, :, i, 3] = MutualInfoMatrix(coordinateYMatrix, numOfBins)
+                mutualInfoAllSamplesAllRafts[:, :, i, 3] = fsr.mutual_info_matrix(coordinateYMatrix, numOfBins)
 
                 velocityRMatrix = raftVelocityR[:, endOfInterval - widthOfInterval:endOfInterval]
-                mutualInfoAllSamplesAllRafts[:, :, i, 4] = MutualInfoMatrix(velocityRMatrix, numOfBins)
+                mutualInfoAllSamplesAllRafts[:, :, i, 4] = fsr.mutual_info_matrix(velocityRMatrix, numOfBins)
 
                 velocityThetaMatrix = raftVelocityTheta[:, endOfInterval - widthOfInterval:endOfInterval]
-                mutualInfoAllSamplesAllRafts[:, :, i, 5] = MutualInfoMatrix(velocityThetaMatrix, numOfBins)
+                mutualInfoAllSamplesAllRafts[:, :, i, 5] = fsr.mutual_info_matrix(velocityThetaMatrix, numOfBins)
 
                 velocityNormPolarMatrix = raftVelocityNormPolar[:, endOfInterval - widthOfInterval:endOfInterval]
-                mutualInfoAllSamplesAllRafts[:, :, i, 6] = MutualInfoMatrix(velocityNormPolarMatrix, numOfBins)
+                mutualInfoAllSamplesAllRafts[:, :, i, 6] = fsr.mutual_info_matrix(velocityNormPolarMatrix, numOfBins)
 
                 velocityXMatrix = raftVelocityX[:, endOfInterval - widthOfInterval:endOfInterval]
-                mutualInfoAllSamplesAllRafts[:, :, i, 7] = MutualInfoMatrix(velocityXMatrix, numOfBins)
+                mutualInfoAllSamplesAllRafts[:, :, i, 7] = fsr.mutual_info_matrix(velocityXMatrix, numOfBins)
 
                 velocityYMatrix = raftVelocityY[:, endOfInterval - widthOfInterval:endOfInterval]
-                mutualInfoAllSamplesAllRafts[:, :, i, 8] = MutualInfoMatrix(velocityYMatrix, numOfBins)
+                mutualInfoAllSamplesAllRafts[:, :, i, 8] = fsr.mutual_info_matrix(velocityYMatrix, numOfBins)
 
                 velocityNormXYMatrix = raftVelocityNormXY[:, endOfInterval - widthOfInterval:endOfInterval]
-                mutualInfoAllSamplesAllRafts[:, :, i, 9] = MutualInfoMatrix(velocityNormXYMatrix, numOfBins)
+                mutualInfoAllSamplesAllRafts[:, :, i, 9] = fsr.mutual_info_matrix(velocityNormXYMatrix, numOfBins)
 
             mutualInfoAllSamplesAvgOverAllRafts = mutualInfoAllSamplesAllRafts.mean((0, 1))
-            mutualInfoAllSamplesAvgOverAllRaftsSelfMIOnly = np.trace(mutualInfoAllSamplesAllRafts, axis1=0,
-                                                                     axis2=1) / numOfRafts
-            mutualInfoAllSamplesAvgOverAllRaftsExcludingSelfMI = (
-                                                                             mutualInfoAllSamplesAvgOverAllRafts * numOfRafts - mutualInfoAllSamplesAvgOverAllRaftsSelfMIOnly) / (
-                                                                             numOfRafts - 1)
+            mutualInfoAllSamplesAvgOverAllRaftsSelfMIOnly = \
+                np.trace(mutualInfoAllSamplesAllRafts, axis1=0, axis2=1) / numOfRafts
+            mutualInfoAllSamplesAvgOverAllRaftsExcludingSelfMI = \
+                (mutualInfoAllSamplesAvgOverAllRafts * numOfRafts - mutualInfoAllSamplesAvgOverAllRaftsSelfMIOnly) / \
+                (numOfRafts - 1)
 
             mutualInfoAvg = mutualInfoAllSamplesAvgOverAllRafts.mean(axis=0)
             mutualInfoAvgSelfMIOnly = mutualInfoAllSamplesAvgOverAllRaftsSelfMIOnly.mean(axis=0)
             mutualInfoAvgExcludingSelfMI = mutualInfoAllSamplesAvgOverAllRaftsExcludingSelfMI.mean(axis=0)
 
-        ###########################  particle velocity and MSD analysis
+        #  particle velocity and MSD analysis
         if analysisType == 5:
             embeddingDimension = 20
             reconstructionComponents = np.arange(5)
@@ -1238,10 +835,10 @@ for dataID in range(2, len(dataFileListExcludingPostProcessed)):
             raftVelocityXFiltered = np.zeros_like(raftVelocityX)
             raftVelocityYFiltered = np.zeros_like(raftVelocityY)
             for raftID in np.arange(numOfRafts):
-                raftVelocityXFiltered[raftID, :] = SSAFull(raftVelocityX[raftID, :], embeddingDimension,
-                                                           reconstructionComponents)
-                raftVelocityYFiltered[raftID, :] = SSAFull(raftVelocityY[raftID, :], embeddingDimension,
-                                                           reconstructionComponents)
+                raftVelocityXFiltered[raftID, :] = fsr.ssa_full(raftVelocityX[raftID, :], embeddingDimension,
+                                                                reconstructionComponents)
+                raftVelocityYFiltered[raftID, :] = fsr.ssa_full(raftVelocityY[raftID, :], embeddingDimension,
+                                                                reconstructionComponents)
 
             raftVelocityNormFiltered = np.sqrt(raftVelocityXFiltered ** 2 + raftVelocityYFiltered ** 2)
 
@@ -1255,11 +852,14 @@ for dataID in range(2, len(dataFileListExcludingPostProcessed)):
             raftRadialVectorY = raftLocationsY - raftOrbitingCentersYBroadcasted
             raftRadialVectorXUnitized = raftRadialVectorX / np.sqrt(raftRadialVectorX ** 2 + raftRadialVectorY ** 2)
             raftRadialVectorYUnitized = raftRadialVectorY / np.sqrt(raftRadialVectorX ** 2 + raftRadialVectorY ** 2)
-            raftTangentialVectorXUnitized = -raftRadialVectorYUnitized  # negative sign is assigned such that the tangential velocity is positive
+            raftTangentialVectorXUnitized = -raftRadialVectorYUnitized
+            # negative sign is assigned such that the tangential velocity is positive
             raftTangentialVectorYUnitized = raftRadialVectorXUnitized
             # get the radial and tangential velocities
-            raftRadialVelocity = raftVelocityXFiltered * raftRadialVectorXUnitized + raftVelocityYFiltered * raftRadialVectorYUnitized
-            raftTangentialVelocity = raftVelocityXFiltered * raftTangentialVectorXUnitized + raftVelocityYFiltered * raftTangentialVectorYUnitized
+            raftRadialVelocity = raftVelocityXFiltered * raftRadialVectorXUnitized + \
+                                 raftVelocityYFiltered * raftRadialVectorYUnitized
+            raftTangentialVelocity = raftVelocityXFiltered * raftTangentialVectorXUnitized + \
+                                     raftVelocityYFiltered * raftTangentialVectorYUnitized
 
             # MSD analysis
             particleMSD = np.zeros((numOfRafts, numOfFrames))
@@ -1292,7 +892,7 @@ for dataID in range(2, len(dataFileListExcludingPostProcessed)):
 
                 particleRMSD[raftID, :] = np.sqrt(particleMSD[raftID, :])
 
-        ###########################   save postprocessed data file
+        # save postprocessed data file
         tempShelf = shelve.open(shelveDataFileName)
         if analysisType == 1 or analysisType == 2 or analysisType == 4 or analysisType == 5:
             for key in listOfNewVariablesForClusterAnalysis:
@@ -1439,7 +1039,8 @@ dfRaftVelocitiesVsOrbitingDistances = pd.DataFrame()
 
 dfRaftXYAndMSD = pd.DataFrame(columns=['timeDifferenceInFrames'])
 
-# for now, just fill the distancesInRadius column with radialRangeArray and timeDifferenceInFrames with timeDifferenceArray
+# for now, just fill the distancesInRadius column with radialRangeArray and
+# timeDifferenceInFrames with timeDifferenceArray
 deltaR = 1  # check this every time
 radialRangeArray = np.arange(2, 100, deltaR)
 dfRadialDistributionFunction['distancesInRadius'] = radialRangeArray
@@ -1477,10 +1078,10 @@ for dataID in range(0, len(mainDataList)):
     dfSummary.loc[dataID, 'magnification'] = mainDataList[dataID]['magnification']
     dfSummary.loc[dataID, 'radiusAvg'] = mainDataList[dataID]['raftRadii'].mean()
     dfSummary.loc[dataID, 'numOfFrames'] = mainDataList[dataID]['numOfFrames']
-    dfSummary.loc[dataID, 'frameWidth'] = mainDataList[dataID]['currentFrameGray'].shape[
-        0]  # from frame size, you can guess frame rate.
+    dfSummary.loc[dataID, 'frameWidth'] = mainDataList[dataID]['currentFrameGray'].shape[0]
+    # from frame size, you can guess frame rate.
     dfSummary.loc[dataID, 'frameHeight'] = mainDataList[dataID]['currentFrameGray'].shape[1]
-    #    radiusInPixel = 23 # check this every time
+    # radiusInPixel = 23 # check this every time
     scaleBar = 150 / mainDataList[dataID]['raftRadii'].mean()  # unit micron/pixel
 
     # construct shelveName
@@ -1489,8 +1090,8 @@ for dataID in range(0, len(mainDataList)):
     batchNum = mainDataList[dataID]['batchNum']
     spinSpeed = mainDataList[dataID]['spinSpeed']
     magnification = mainDataList[dataID]['magnification']
-    shelveName = date + '_' + str(numOfRafts) + 'Rafts_' + str(batchNum) + '_' + str(spinSpeed) + 'rps_' + str(
-        magnification) + 'x_' + 'postprocessed' + str(analysisType)
+    shelveName = date + '_' + str(numOfRafts) + 'Rafts_' + str(batchNum) + '_' + str(spinSpeed) + 'rps_' + \
+                 str(magnification) + 'x_' + 'postprocessed' + str(analysisType)
     shelveDataFileName = shelveName + '.dat'
 
     if os.path.isfile(shelveDataFileName):
@@ -1600,24 +1201,30 @@ for dataID in range(0, len(mainDataList)):
             dfTemporalCorrHexaBondOrientationOrderAvgAllRafts = dfTemporalCorrHexaBondOrientationOrderAvgAllRafts.join(
                 pd.Series(np.absolute(tempShelf['temporalCorrHexaBondOrientationOrderAvgAllRafts']),
                           name=columnName + '_abs'), how='outer')
-            dfTemporalCorrPentaBondOrientationOrderAvgAllRafts = dfTemporalCorrPentaBondOrientationOrderAvgAllRafts.join(
-                pd.Series(np.real(tempShelf['temporalCorrPentaBondOrientationOrderAvgAllRafts']),
-                          name=columnName + '_real'), how='outer')
-            dfTemporalCorrPentaBondOrientationOrderAvgAllRafts = dfTemporalCorrPentaBondOrientationOrderAvgAllRafts.join(
-                pd.Series(np.imag(tempShelf['temporalCorrPentaBondOrientationOrderAvgAllRafts']),
-                          name=columnName + '_imag'), how='outer')
-            dfTemporalCorrPentaBondOrientationOrderAvgAllRafts = dfTemporalCorrPentaBondOrientationOrderAvgAllRafts.join(
-                pd.Series(np.absolute(tempShelf['temporalCorrPentaBondOrientationOrderAvgAllRafts']),
-                          name=columnName + '_abs'), how='outer')
-            dfTemporalCorrTetraBondOrientationOrderAvgAllRafts = dfTemporalCorrTetraBondOrientationOrderAvgAllRafts.join(
-                pd.Series(np.real(tempShelf['temporalCorrTetraBondOrientationOrderAvgAllRafts']),
-                          name=columnName + '_real'), how='outer')
-            dfTemporalCorrTetraBondOrientationOrderAvgAllRafts = dfTemporalCorrTetraBondOrientationOrderAvgAllRafts.join(
-                pd.Series(np.imag(tempShelf['temporalCorrTetraBondOrientationOrderAvgAllRafts']),
-                          name=columnName + '_imag'), how='outer')
-            dfTemporalCorrTetraBondOrientationOrderAvgAllRafts = dfTemporalCorrTetraBondOrientationOrderAvgAllRafts.join(
-                pd.Series(np.absolute(tempShelf['temporalCorrTetraBondOrientationOrderAvgAllRafts']),
-                          name=columnName + '_abs'), how='outer')
+            dfTemporalCorrPentaBondOrientationOrderAvgAllRafts = \
+                dfTemporalCorrPentaBondOrientationOrderAvgAllRafts.join(
+                    pd.Series(np.real(tempShelf['temporalCorrPentaBondOrientationOrderAvgAllRafts']),
+                              name=columnName + '_real'), how='outer')
+            dfTemporalCorrPentaBondOrientationOrderAvgAllRafts = \
+                dfTemporalCorrPentaBondOrientationOrderAvgAllRafts.join(
+                    pd.Series(np.imag(tempShelf['temporalCorrPentaBondOrientationOrderAvgAllRafts']),
+                              name=columnName + '_imag'), how='outer')
+            dfTemporalCorrPentaBondOrientationOrderAvgAllRafts = \
+                dfTemporalCorrPentaBondOrientationOrderAvgAllRafts.join(
+                    pd.Series(np.absolute(tempShelf['temporalCorrPentaBondOrientationOrderAvgAllRafts']),
+                              name=columnName + '_abs'), how='outer')
+            dfTemporalCorrTetraBondOrientationOrderAvgAllRafts = \
+                dfTemporalCorrTetraBondOrientationOrderAvgAllRafts.join(
+                    pd.Series(np.real(tempShelf['temporalCorrTetraBondOrientationOrderAvgAllRafts']),
+                              name=columnName + '_real'), how='outer')
+            dfTemporalCorrTetraBondOrientationOrderAvgAllRafts = \
+                dfTemporalCorrTetraBondOrientationOrderAvgAllRafts.join(
+                    pd.Series(np.imag(tempShelf['temporalCorrTetraBondOrientationOrderAvgAllRafts']),
+                              name=columnName + '_imag'), how='outer')
+            dfTemporalCorrTetraBondOrientationOrderAvgAllRafts = \
+                dfTemporalCorrTetraBondOrientationOrderAvgAllRafts.join(
+                    pd.Series(np.absolute(tempShelf['temporalCorrTetraBondOrientationOrderAvgAllRafts']),
+                              name=columnName + '_abs'), how='outer')
             dfHexaBondOrientatiotionOrderModuliiAvgTime = dfHexaBondOrientatiotionOrderModuliiAvgTime.join(
                 pd.Series(tempShelf['hexaticOrderParameterModuliiAvgs'], name=columnName + '_time'), how='outer')
             dfHexaBondOrientatiotionOrderAvgNormTime = dfHexaBondOrientatiotionOrderAvgNormTime.join(
@@ -1653,12 +1260,10 @@ for dataID in range(0, len(mainDataList)):
 
         if analysisType == 5:
             # velocity unit conversion: (pixel/frame) * (frameRate frame/second) * (scaleBar um/pixel) = um/sec
-            dfSummary.loc[dataID, 'raftKineticEnergiesSumAllRaftsAvgAllFrames'] = tempShelf[
-                                                                                      'raftKineticEnergiesSumAllRafts'].mean() * (
-                                                                                              frameRate * scaleBar) ** 2
-            dfSummary.loc[dataID, 'raftKineticEnergiesSumAllRaftsStdAllFrames'] = tempShelf[
-                                                                                      'raftKineticEnergiesSumAllRafts'].std() * (
-                                                                                              frameRate * scaleBar) ** 2
+            dfSummary.loc[dataID, 'raftKineticEnergiesSumAllRaftsAvgAllFrames'] = \
+                tempShelf['raftKineticEnergiesSumAllRafts'].mean() * (frameRate * scaleBar) ** 2
+            dfSummary.loc[dataID, 'raftKineticEnergiesSumAllRaftsStdAllFrames'] = \
+                tempShelf['raftKineticEnergiesSumAllRafts'].std() * (frameRate * scaleBar) ** 2
             dfRaftVelocitiesVsOrbitingDistances = dfRaftVelocitiesVsOrbitingDistances.join(
                 pd.Series(mainDataList[dataID]['raftOrbitingDistances'].flatten(order='F') * scaleBar,
                           name=columnName + '_orbitingDistances'), how='outer')
@@ -1830,8 +1435,10 @@ raftVelocityNorm = np.sqrt(raftVelocityX ** 2 + raftVelocityY ** 2)
 raftVelocityXFiltered = np.zeros_like(raftVelocityX)
 raftVelocityYFiltered = np.zeros_like(raftVelocityY)
 for raftID in np.arange(numOfRafts):
-    raftVelocityXFiltered[raftID, :] = SSAFull(raftVelocityX[raftID, :], embeddingDimension, reconstructionComponents)
-    raftVelocityYFiltered[raftID, :] = SSAFull(raftVelocityY[raftID, :], embeddingDimension, reconstructionComponents)
+    raftVelocityXFiltered[raftID, :] = fsr.ssa_full(raftVelocityX[raftID, :],
+                                                    embeddingDimension, reconstructionComponents)
+    raftVelocityYFiltered[raftID, :] = fsr.ssa_full(raftVelocityY[raftID, :],
+                                                    embeddingDimension, reconstructionComponents)
 
 raftVelocityNormFiltered = np.sqrt(raftVelocityXFiltered ** 2 + raftVelocityYFiltered ** 2)
 
@@ -1845,11 +1452,14 @@ raftRadialVectorX = raftLocationsX - raftOrbitingCentersXBroadcasted
 raftRadialVectorY = raftLocationsY - raftOrbitingCentersYBroadcasted
 raftRadialVectorXUnitized = raftRadialVectorX / np.sqrt(raftRadialVectorX ** 2 + raftRadialVectorY ** 2)
 raftRadialVectorYUnitized = raftRadialVectorY / np.sqrt(raftRadialVectorX ** 2 + raftRadialVectorY ** 2)
-raftTangentialVectorXUnitized = -raftRadialVectorYUnitized  # negative sign is assigned such that the tangential velocity is positive
+raftTangentialVectorXUnitized = -raftRadialVectorYUnitized
+# negative sign is assigned such that the tangential velocity is positive
 raftTangentialVectorYUnitized = raftRadialVectorXUnitized
 # get the radial and tangential velocities
-raftRadialVelocity = raftVelocityXFiltered * raftRadialVectorXUnitized + raftVelocityYFiltered * raftRadialVectorYUnitized
-raftTangentialVelocity = raftVelocityXFiltered * raftTangentialVectorXUnitized + raftVelocityYFiltered * raftTangentialVectorYUnitized
+raftRadialVelocity = raftVelocityXFiltered * raftRadialVectorXUnitized + \
+                     raftVelocityYFiltered * raftRadialVectorYUnitized
+raftTangentialVelocity = raftVelocityXFiltered * raftTangentialVectorXUnitized + \
+                         raftVelocityYFiltered * raftTangentialVectorYUnitized
 
 particleMSD = np.zeros((numOfRafts, numOfFrames))
 particleMSDstd = np.zeros((numOfRafts, numOfFrames))
@@ -1916,7 +1526,7 @@ fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(15, 15))
 colors = plt.cm.viridis(np.linspace(0, 1, numOfRafts))
 for i in range(0, numOfRafts, 90):
     ax.plot(np.arange(0, numOfFrames), raftVelocityX[i, :], label='before SSA {}'.format(i))
-    ax.plot(np.arange(0, numOfFrames), SSAFull(raftVelocityX[i, :], embeddingDimension, reconstructionComponents),
+    ax.plot(np.arange(0, numOfFrames), fsr.ssa_full(raftVelocityX[i, :], embeddingDimension, reconstructionComponents),
             label='after SSA {}'.format(i))
 # ax.set_xlim([0, numOfFrames])
 # ax.set_ylim([0, raftOrbitingDistances.max()])
@@ -2187,8 +1797,8 @@ radius = 15.5  # raftRadiiInRegion[np.nonzero(raftRadiiInRegion)].mean() # pixel
 scaleBar = 300 / radius / 2  # micron per pixel
 frameRate = 30  # frame per second
 
-if 'raftLocationsInRegion' in mainDataList[
-    dataID]:  # dataID is assigned in the section where the data from processed file is loaded
+if 'raftLocationsInRegion' in mainDataList[dataID]:
+    # dataID is assigned in the section where the data from processed file is loaded
     # these are redundant, but they prevent the automatically detected errors 
     # for undeclared variables in this and the following section
     regionTopLeftX = mainDataList[dataID]['regionTopLeftX']
@@ -2219,19 +1829,21 @@ for prevRaftNum in range(0, numOfRaftsInPrevFrame):
 for currentFrameNum in progressbar.progressbar(range(startingFrameNum + 1, numOfFrames)):
     numOfRaftsInCurrFrame = np.count_nonzero(raftLocationsInRegion[:, currentFrameNum, 0])
     # in raftPairwiseDistances, rows - prevRaftNum; columns - currRaftNum 
-    raftPairwiseDistances = scipyDistance.cdist(raftLocationsInRegion[:numOfRaftsInPrevFrame, currentFrameNum - 1, :],
-                                                raftLocationsInRegion[:numOfRaftsInCurrFrame, currentFrameNum, :],
-                                                'euclidean')
+    raftPairwiseDistances = scipy_distance.cdist(raftLocationsInRegion[:numOfRaftsInPrevFrame, currentFrameNum - 1, :],
+                                                 raftLocationsInRegion[:numOfRaftsInCurrFrame, currentFrameNum, :],
+                                                 'euclidean')
 
     # loop over all currRaftNum. It necessitates looking for the corresponding raft in the previous frame
-    if numOfRaftsInCurrFrame > 0 and numOfRaftsInPrevFrame > 0:  # otherwise raftPairwiseDistances[:,currRaftNum].min() gives error
+    if numOfRaftsInCurrFrame > 0 and numOfRaftsInPrevFrame > 0:
+        # otherwise raftPairwiseDistances[:,currRaftNum].min() gives error
         for currRaftNum in range(0, numOfRaftsInCurrFrame):
             if raftPairwiseDistances[:, currRaftNum].min() < maxDisplacement:
                 # this is an old raft, get its prevRaftNum from raftPairwiseDistances
-                prevRowNum = \
-                np.nonzero(raftPairwiseDistances[:, currRaftNum] == raftPairwiseDistances[:, currRaftNum].min())[0][
-                    0]  # [0][0] just to remove array
-                # use rowNumsSeries to loop over raftIndex and and rowNumsList to look for corresponding raft in the previous frame
+                prevRowNum = np.nonzero(raftPairwiseDistances[:, currRaftNum] ==
+                                        raftPairwiseDistances[:, currRaftNum].min())[0][0]
+                # [0][0] just to remove array
+                # use rowNumsSeries to loop over raftIndex and
+                # rowNumsList to look for corresponding raft in the previous frame
                 # note that the raftIndex in rowNumsSeries is the same as in dfRegionSearch
                 rowNumsSeries = dfRegionSearch[dfRegionSearch.exitingFrameNum == currentFrameNum - 1]['rowIndices']
                 for raftIndex, rowNumsList in rowNumsSeries.iteritems():
@@ -2273,8 +1885,9 @@ for raftIndex, positionsXYList in positionsXYListSeries.iteritems():
         dfRegionSearch.loc[raftIndex, 'avgSpeedInYInMicronPerSec'] = avgSpeedInYInPixel * scaleBar * frameRate
 
 avgYsInPixelSeries = dfRegionSearch.avgYsInPixel
-avgYsInPixelArray = np.array(avgYsInPixelSeries[
-                                 avgYsInPixelSeries == avgYsInPixelSeries].tolist())  # using the fact that np.nan != np.nan to remove nan; https://stackoverflow.com/questions/20235401/remove-nan-from-pandas-series
+avgYsInPixelArray = np.array(avgYsInPixelSeries[avgYsInPixelSeries == avgYsInPixelSeries].tolist())
+# using the fact that np.nan != np.nan to remove nan;
+# https://stackoverflow.com/questions/20235401/remove-nan-from-pandas-series
 avgSpeedInXInPixelSeries = dfRegionSearch.avgSpeedInXInPixel
 avgSpeedInXInPixelArray = np.array(
     avgSpeedInXInPixelSeries[avgSpeedInXInPixelSeries == avgSpeedInXInPixelSeries].tolist())
@@ -2344,8 +1957,8 @@ for currentFrameNum in progressbar.progressbar(range(len(tiffFileList))):  # ran
     currentFrameBGR = cv.imread(tiffFileList[currentFrameNum])
     currentFrameDraw = currentFrameBGR.copy()
     numOfRaftsInCurrFrame = np.count_nonzero(raftLocationsInRegion[:, currentFrameNum, 0])
-    currentFrameDraw = DrawRafts(currentFrameDraw, raftLocationsInRegion[:, currentFrameNum, :],
-                                 raftRadiiInRegion[:, currentFrameNum], numOfRaftsInCurrFrame)
+    currentFrameDraw = fsr.draw_rafts(currentFrameDraw, raftLocationsInRegion[:, currentFrameNum, :],
+                                      raftRadiiInRegion[:, currentFrameNum], numOfRaftsInCurrFrame)
     currentFrameDraw = cv.rectangle(currentFrameDraw, (regionTopLeftX, regionTopLeftY),
                                     (regionTopLeftX + regionWidth, regionTopLeftY + regionHeight), (0, 0, 255), 2)
 
@@ -2374,9 +1987,10 @@ raftPairwiseConnectivity = np.zeros((numOfRafts, numOfRafts, numOfFrames))
 # using scipy distance module
 t1 = time.perf_counter()
 for frameNum in np.arange(numOfFrames):
-    raftPairwiseDistances[:, :, frameNum] = scipyDistance.cdist(raftLocations[:, frameNum, :],
-                                                                raftLocations[:, frameNum, :], 'euclidean')
-    # smallest nonzero eedistances is assigned to one raft as the pairwise distance, connected rafts will be set to 0 later
+    raftPairwiseDistances[:, :, frameNum] = scipy_distance.cdist(raftLocations[:, frameNum, :],
+                                                                 raftLocations[:, frameNum, :], 'euclidean')
+    # smallest nonzero eedistances is assigned to one raft as the pairwise distance,
+    # connected rafts will be set to 0 later
     raftPairwiseEdgeEdgeDistancesSmallest[:, frameNum] = np.partition(raftPairwiseDistances[:, :, frameNum], 1, axis=1)[
                                                          :, 1] - radius * 2
 
@@ -2445,7 +2059,8 @@ for frameNum in np.arange(numOfFrames):
             clusters[raftB, 0, frameNum] = clusters[raftA, 0, frameNum]
         if (A == False) and (B == True):
             clusters[raftA, 0, frameNum] = clusters[raftB, 0, frameNum]
-        # if neigher is new and if their cluster numbers differ, then change the larger cluster number to the smaller one
+        # if neither is new and if their cluster numbers differ,
+        # then change the larger cluster number to the smaller one
         # note that this could lead to a cluster number being jumped over
         if (A == True) and (B == True) and (clusters[raftA, 0, frameNum] != clusters[raftB, 0, frameNum]):
             clusterNumLarge = max(clusters[raftA, 0, frameNum], clusters[raftB, 0, frameNum])
@@ -2469,7 +2084,8 @@ for frameNum in np.arange(numOfFrames):
     # count loners
     numOfLoners = len(clusters[clusters[:, 1, frameNum] == 0, 1, frameNum])
     clusterSizeCounts[1, frameNum] = numOfLoners
-    # for the rest, the number of occurrence of cluster size in the 2nd column is the cluster size times the number of clusters of that size
+    # for the rest, the number of occurrence of cluster size in the 2nd column is the cluster size
+    # times the number of clusters of that size
     for clusterSize in np.arange(2, largestClusterSize + 1):
         numOfClusters = len(clusters[clusters[:, 1, frameNum] == clusterSize, 1, frameNum]) / clusterSize
         clusterSizeCounts[int(clusterSize), frameNum] = numOfClusters
@@ -2478,7 +2094,7 @@ t2 = time.perf_counter()
 timeTotal = t2 - t1  # in seconds
 print(timeTotal)
 
-# some averageing
+# some averaging
 dummyArray = np.arange((numOfRafts + 1) * numOfFrames).reshape((numOfFrames, -1)).T
 dummyArray = np.mod(dummyArray, (numOfRafts + 1))  # rows are cluster sizes, and columns are frame numbers
 clusterSizeAvgIncludingLoners = np.average(dummyArray, axis=0, weights=clusterSizeCounts)
@@ -2615,11 +2231,11 @@ if outputVideo == 1:
 for currentFrameNum in progressbar.progressbar(range(10)):
     currentFrameBGR = cv.imread(tiffFileList[currentFrameNum])
     currentFrameDraw = currentFrameBGR.copy()
-    currentFrameDraw = DrawRafts(currentFrameDraw, raftLocations[:, currentFrameNum, :], raftRadii[:, currentFrameNum],
-                                 numOfRafts)
-    currentFrameDraw = DrawRaftNumber(currentFrameDraw, raftLocations[:, currentFrameNum, :], numOfRafts)
-    currentFrameDraw = DrawClusters(currentFrameDraw, raftPairwiseConnectivity[:, :, currentFrameNum],
-                                    raftLocations[:, currentFrameNum, :])
+    currentFrameDraw = fsr.draw_rafts(currentFrameDraw, raftLocations[:, currentFrameNum, :],
+                                      raftRadii[:, currentFrameNum], numOfRafts)
+    currentFrameDraw = fsr.draw_raft_number(currentFrameDraw, raftLocations[:, currentFrameNum, :], numOfRafts)
+    currentFrameDraw = fsr.draw_clusters(currentFrameDraw, raftPairwiseConnectivity[:, :, currentFrameNum],
+                                         raftLocations[:, currentFrameNum, :])
     if outputImage == 1:
         outputImageName = date + '_' + str(numOfRafts) + 'Rafts_' + str(batchNum) + '_' + str(
             spinSpeed) + 'rps_cluster_' + str(currentFrameNum + 1).zfill(4) + '.jpg'
@@ -2732,24 +2348,25 @@ for currentFrameNum in progressbar.progressbar(range(numOfFrames)):
     # currentFrameNum = 0
     currentFrameBGR = cv.imread(tiffFileList[currentFrameNum])
     currentFrameDraw = currentFrameBGR.copy()
-    currentFrameDraw = DrawRafts(currentFrameDraw, raftLocations[:, currentFrameNum, :], raftRadii[:, currentFrameNum],
-                                 numOfRafts)
-    currentFrameDraw = DrawRaftNumber(currentFrameDraw, raftLocations[:, currentFrameNum, :], numOfRafts)
-    currentFrameDraw = DrawVoronoi(currentFrameDraw, raftLocations[:, currentFrameNum, :])
+    currentFrameDraw = fsr.draw_rafts(currentFrameDraw, raftLocations[:, currentFrameNum, :],
+                                      raftRadii[:, currentFrameNum], numOfRafts)
+    currentFrameDraw = fsr.draw_raft_number(currentFrameDraw, raftLocations[:, currentFrameNum, :], numOfRafts)
+    currentFrameDraw = fsr.draw_voronoi(currentFrameDraw, raftLocations[:, currentFrameNum, :])
     # plt.imshow(currentFrameDraw[:,:,::-1])
 
-    vor = scipyVoronoi(raftLocations[:, currentFrameNum, :])
+    vor = ScipyVoronoi(raftLocations[:, currentFrameNum, :])
     allVertices = vor.vertices
-    neighborPairs = vor.ridge_points  # row# is the index of a ridge, columns are the two point# that correspond to the ridge
-    ridgeVertexPairs = np.asarray(
-        vor.ridge_vertices)  # row# is the index of a ridge, columns are two vertex# of the ridge
+    neighborPairs = vor.ridge_points
+    # row# is the index of a ridge, columns are the two point# that correspond to the ridge
+    ridgeVertexPairs = np.asarray(vor.ridge_vertices)
+    # row# is the index of a ridge, columns are two vertex# of the ridge
     raftPairwiseDistancesMatrix = raftPairwiseDistancesInRadius[:, :, currentFrameNum]
 
     for raftID in np.arange(numOfRafts):
         ridgeIndices0 = np.nonzero(neighborPairs[:, 0] == raftID)
         ridgeIndices1 = np.nonzero(neighborPairs[:, 1] == raftID)
-        ridgeIndices = np.concatenate((ridgeIndices0, ridgeIndices1),
-                                      axis=None)  # index is for the index of neighborPairs or ridgeVertexPairs list
+        ridgeIndices = np.concatenate((ridgeIndices0, ridgeIndices1), axis=None)
+        # index is for the index of neighborPairs or ridgeVertexPairs list
         neighborPairsOfOneRaft = neighborPairs[ridgeIndices, :]
         neighborsOfOneRaft = np.concatenate((neighborPairsOfOneRaft[neighborPairsOfOneRaft[:, 0] == raftID, 1],
                                              neighborPairsOfOneRaft[neighborPairsOfOneRaft[:, 1] == raftID, 0]))
@@ -2757,7 +2374,7 @@ for currentFrameNum in progressbar.progressbar(range(numOfFrames)):
         neighborDistances = raftPairwiseDistancesMatrix[raftID, neighborsOfOneRaft]
         neighborDistanceAvg = neighborDistances.mean()
 
-        ## order parameters and the spatial correlation functions of the order parameters
+        # order parameters and the spatial correlation functions of the order parameters
         raftLocation = raftLocations[raftID, currentFrameNum, :]
         neighborLocations = raftLocations[neighborsOfOneRaft, currentFrameNum, :]
 
@@ -2784,7 +2401,7 @@ for currentFrameNum in progressbar.progressbar(range(numOfFrames)):
 
             verticesOfOneRaftSorted = verticesOfOneRaft[polarAngles.argsort()]
 
-            voronoiCellArea = PolygonArea(verticesOfOneRaftSorted[:, 0], verticesOfOneRaftSorted[:, 1])
+            voronoiCellArea = fsr.polygon_area(verticesOfOneRaftSorted[:, 0], verticesOfOneRaftSorted[:, 1])
 
             localDensity = radius * radius * np.pi / voronoiCellArea
         else:
@@ -2798,22 +2415,22 @@ for currentFrameNum in progressbar.progressbar(range(numOfFrames)):
 
         # go through all ridges to calculate or assign ridge length
         for ridgeIndexOfOneRaft, neighborID in enumerate(neighborsOfOneRaft):
-            neighborDistance = calculate_distance(raftLocations[raftID, currentFrameNum, :],
-                                                 raftLocations[neighborID, currentFrameNum, :])
+            neighborDistance = fsr.calculate_distance(raftLocations[raftID, currentFrameNum, :],
+                                                      raftLocations[neighborID, currentFrameNum, :])
             if np.all(ridgeVertexPairsOfOneRaft[ridgeIndexOfOneRaft] >= 0):
                 vertex1ID = ridgeVertexPairsOfOneRaft[ridgeIndexOfOneRaft][0]
                 vertex2ID = ridgeVertexPairsOfOneRaft[ridgeIndexOfOneRaft][1]
                 vertex1 = allVertices[vertex1ID]
                 vertex2 = allVertices[vertex2ID]
-                ridgeLengths[ridgeIndexOfOneRaft] = calculate_distance(vertex1, vertex2)
+                ridgeLengths[ridgeIndexOfOneRaft] = fsr.calculate_distance(vertex1, vertex2)
                 # for ridges that has one vertex outside the image (negative corrdinate)
                 # set ridge length to the be the diameter of the raft
                 if np.all(vertex1 >= 0) and np.all(vertex2 >= 0):
                     ridgeLengthsScaled[ridgeIndexOfOneRaft] = ridgeLengths[ridgeIndexOfOneRaft] * raftRadii[
                         neighborID, currentFrameNum] * 2 / neighborDistance
                 else:
-                    ridgeLengthsScaled[ridgeIndexOfOneRaft] = raftRadii[
-                                                                  neighborID, currentFrameNum] ** 2 * 4 / neighborDistance
+                    ridgeLengthsScaled[ridgeIndexOfOneRaft] = \
+                        raftRadii[neighborID, currentFrameNum] ** 2 * 4 / neighborDistance
             else:
                 # for ridges that has one vertex in the infinity ridge vertex#< 0 (= -1)
                 # set ridge length to the be the diameter of the raft
@@ -2823,7 +2440,8 @@ for currentFrameNum in progressbar.progressbar(range(numOfFrames)):
 
         ridgeLengthsScaledNormalizedBySum = ridgeLengthsScaled / ridgeLengthsScaled.sum()
         ridgeLengthsScaledNormalizedByMax = ridgeLengthsScaled / ridgeLengthsScaled.max()
-        neighborCountWeighted = ridgeLengthsScaledNormalizedByMax.sum()  # assuming the neighbor having the longest ridge (scaled) counts one.
+        neighborCountWeighted = ridgeLengthsScaledNormalizedByMax.sum()
+        # assuming the neighbor having the longest ridge (scaled) counts one.
         neighborDistanceWeightedAvg = np.average(neighborDistances, weights=ridgeLengthsScaledNormalizedBySum)
 
         dfNeighbors.loc[raftID, 'frameNum'] = currentFrameNum
@@ -2895,68 +2513,60 @@ for currentFrameNum in progressbar.progressbar(range(numOfFrames)):
                     2 * np.pi * radialIntervalStart * deltaR * density * (numOfRafts - 1))
         # g6(r), g5(r), g4(r)
         sumOfProductsOfPsi6 = (hexaticOrderParameterArray[js] * np.conjugate(hexaticOrderParameterArray[ks])).sum().real
-        spatialCorrHexaOrderPara[currentFrameNum, radialIndex] = sumOfProductsOfPsi6 / (
-                    2 * np.pi * radialIntervalStart * deltaR * density * (numOfRafts - 1))
-        sumOfProductsOfPsi5 = (
-                    pentaticOrderParameterArray[js] * np.conjugate(pentaticOrderParameterArray[ks])).sum().real
-        spatialCorrPentaOrderPara[currentFrameNum, radialIndex] = sumOfProductsOfPsi5 / (
-                    2 * np.pi * radialIntervalStart * deltaR * density * (numOfRafts - 1))
-        sumOfProductsOfPsi4 = (
-                    tetraticOrderParameterArray[js] * np.conjugate(tetraticOrderParameterArray[ks])).sum().real
-        spatialCorrTetraOrderPara[currentFrameNum, radialIndex] = sumOfProductsOfPsi4 / (
-                    2 * np.pi * radialIntervalStart * deltaR * density * (numOfRafts - 1))
+        spatialCorrHexaOrderPara[currentFrameNum, radialIndex] = \
+            sumOfProductsOfPsi6 / (2 * np.pi * radialIntervalStart * deltaR * density * (numOfRafts - 1))
+        sumOfProductsOfPsi5 = \
+            (pentaticOrderParameterArray[js] * np.conjugate(pentaticOrderParameterArray[ks])).sum().real
+        spatialCorrPentaOrderPara[currentFrameNum, radialIndex] = \
+            sumOfProductsOfPsi5 / (2 * np.pi * radialIntervalStart * deltaR * density * (numOfRafts - 1))
+        sumOfProductsOfPsi4 = \
+            (tetraticOrderParameterArray[js] * np.conjugate(tetraticOrderParameterArray[ks])).sum().real
+        spatialCorrTetraOrderPara[currentFrameNum, radialIndex] = \
+            sumOfProductsOfPsi4 / (2 * np.pi * radialIntervalStart * deltaR * density * (numOfRafts - 1))
 
         # g6(r)/g(r); g5(r)/g(r); g4(r)/g(r)
         if radialDistributionFunction[currentFrameNum, radialIndex] != 0:
-            spatialCorrHexaBondOrientationOrder[currentFrameNum, radialIndex] = spatialCorrHexaOrderPara[
-                                                                                    currentFrameNum, radialIndex] / \
-                                                                                radialDistributionFunction[
-                                                                                    currentFrameNum, radialIndex]
-            spatialCorrPentaBondOrientationOrder[currentFrameNum, radialIndex] = spatialCorrPentaOrderPara[
-                                                                                     currentFrameNum, radialIndex] / \
-                                                                                 radialDistributionFunction[
-                                                                                     currentFrameNum, radialIndex]
-            spatialCorrTetraBondOrientationOrder[currentFrameNum, radialIndex] = spatialCorrTetraOrderPara[
-                                                                                     currentFrameNum, radialIndex] / \
-                                                                                 radialDistributionFunction[
-                                                                                     currentFrameNum, radialIndex]
+            spatialCorrHexaBondOrientationOrder[currentFrameNum, radialIndex] = \
+                spatialCorrHexaOrderPara[currentFrameNum, radialIndex] / radialDistributionFunction[
+                    currentFrameNum, radialIndex]
+            spatialCorrPentaBondOrientationOrder[currentFrameNum, radialIndex] = \
+                spatialCorrPentaOrderPara[currentFrameNum, radialIndex] / radialDistributionFunction[
+                    currentFrameNum, radialIndex]
+            spatialCorrTetraBondOrientationOrder[currentFrameNum, radialIndex] = \
+                spatialCorrTetraOrderPara[currentFrameNum, radialIndex] / radialDistributionFunction[
+                    currentFrameNum, radialIndex]
 
     count1 = np.asarray(neighborCountSeries.value_counts())
-    entropyByNeighborCount[currentFrameNum] = ShannonEntropy(count1)
+    entropyByNeighborCount[currentFrameNum] = fsr.shannon_entropy(count1)
 
     count2, _ = np.histogram(np.asarray(neighborCountWeightedList), binEdgesNeighborCountWeighted)
-    entropyByNeighborCountWeighted[currentFrameNum] = ShannonEntropy(count2)
+    entropyByNeighborCountWeighted[currentFrameNum] = fsr.shannon_entropy(count2)
 
     count3, _ = np.histogram(np.asarray(neighborDistancesList), binEdgesNeighborDistances)
-    entropyByNeighborDistances[currentFrameNum] = ShannonEntropy(count3)
+    entropyByNeighborDistances[currentFrameNum] = fsr.shannon_entropy(count3)
 
     count4, _ = np.histogram(np.asarray(localDensitiesList), binEdgesLocalDensities)
-    entropyByLocalDensities[currentFrameNum] = ShannonEntropy(count4)
+    entropyByLocalDensities[currentFrameNum] = fsr.shannon_entropy(count4)
 
     neighborCountWeightedList = dfNeighbors['neighborCountWeighted'].tolist()
     neighborCountList = dfNeighbors['neighborCount'].tolist()
 
     if drawingRaftOrderParameterModulii == 6:
-        currentFrameDrawOrderPara = DrawAtBottomLeftOfRaftNumberFloat(currentFrameDraw.copy(),
-                                                                      raftLocations[:, currentFrameNum, :],
-                                                                      hexaticOrderParameterMolulii, numOfRafts)
+        currentFrameDrawOrderPara = fsr.draw_at_bottom_left_of_raft_number_float(
+            currentFrameDraw.copy(), raftLocations[:, currentFrameNum, :], hexaticOrderParameterMolulii, numOfRafts)
     elif drawingRaftOrderParameterModulii == 5:
-        currentFrameDrawOrderPara = DrawAtBottomLeftOfRaftNumberFloat(currentFrameDraw.copy(),
-                                                                      raftLocations[:, currentFrameNum, :],
-                                                                      pentaticOrderParameterModulii, numOfRafts)
+        currentFrameDrawOrderPara = fsr.draw_at_bottom_left_of_raft_number_float(
+            currentFrameDraw.copy(), raftLocations[:, currentFrameNum, :], pentaticOrderParameterModulii, numOfRafts)
     elif drawingRaftOrderParameterModulii == 4:
-        currentFrameDrawOrderPara = DrawAtBottomLeftOfRaftNumberFloat(currentFrameDraw.copy(),
-                                                                      raftLocations[:, currentFrameNum, :],
-                                                                      tetraticOrderParameterModulii, numOfRafts)
+        currentFrameDrawOrderPara = fsr.draw_at_bottom_left_of_raft_number_float(
+            currentFrameDraw.copy(), raftLocations[:, currentFrameNum, :], tetraticOrderParameterModulii, numOfRafts)
 
     if drawingNeighborCountWeighted == 1:
-        currentFrameDrawNeighborCount = DrawAtBottomLeftOfRaftNumberInteger(currentFrameDraw.copy(),
-                                                                            raftLocations[:, currentFrameNum, :],
-                                                                            neighborCountList, numOfRafts)
+        currentFrameDrawNeighborCount = fsr.draw_at_bottom_left_of_raft_number_integer(
+            currentFrameDraw.copy(), raftLocations[:, currentFrameNum, :], neighborCountList, numOfRafts)
     elif drawingNeighborCountWeighted == 2:
-        currentFrameDrawNeighborCount = DrawAtBottomLeftOfRaftNumberFloat(currentFrameDraw.copy(),
-                                                                          raftLocations[:, currentFrameNum, :],
-                                                                          neighborCountWeightedList, numOfRafts)
+        currentFrameDrawNeighborCount = fsr.draw_at_bottom_left_of_raft_number_float(
+            currentFrameDraw.copy(), raftLocations[:, currentFrameNum, :], neighborCountWeightedList, numOfRafts)
 
     if outputImage == 1:
         outputImageName = date + '_' + str(numOfRafts) + 'Rafts_' + str(batchNum) + '_' + str(
@@ -3012,9 +2622,12 @@ for raftID in np.arange(numOfRafts):
 
     # multiply the two matrix so that for each column, the rows on and below the diagonal are the products of 
     # the conjugate of psi6(t0) and psi6(t0 + tStepSize), the tStepSize is the same the column index. 
-    hexaOrdParaOfOneRaftBroadcastedTimesToeplitz = hexaOrdParaOfOneRaftArrayConjugateBroadcasted * hexaOrdParaOfOneRaftToeplitzMatrix
-    pentaOrdParaOfOneRaftBroadcastedTimesToeplitz = pentaOrdParaOfOneRaftArrayConjugateBroadcasted * pentaOrdParaOfOneRaftToeplitzMatrix
-    tetraOrdParaOfOneRaftBroadcastedTimesToeplitz = tetraOrdParaOfOneRaftArrayConjugateBroadcasted * tetraOrdParaOfOneRaftToeplitzMatrix
+    hexaOrdParaOfOneRaftBroadcastedTimesToeplitz = \
+        hexaOrdParaOfOneRaftArrayConjugateBroadcasted * hexaOrdParaOfOneRaftToeplitzMatrix
+    pentaOrdParaOfOneRaftBroadcastedTimesToeplitz = \
+        pentaOrdParaOfOneRaftArrayConjugateBroadcasted * pentaOrdParaOfOneRaftToeplitzMatrix
+    tetraOrdParaOfOneRaftBroadcastedTimesToeplitz = \
+        tetraOrdParaOfOneRaftArrayConjugateBroadcasted * tetraOrdParaOfOneRaftToeplitzMatrix
 
     for tStepSize in np.arange(numOfFrames):
         temporalCorrHexaBondOrientationOrder[raftID, tStepSize] = np.average(
@@ -3033,7 +2646,7 @@ frameNumToLook = 0
 dfNeighborsOneFrame = dfNeighborsAllFrames[dfNeighborsAllFrames.frameNum == frameNumToLook]
 
 dfNeighborsOneFramehexaOrdPara = dfNeighborsOneFrame['hexaticOrderParameter']
-dfNeighborsOneFramePhaseAngle = np.angle(dfNeighborsOneFramehexaOrdPara, deg=1)
+dfNeighborsOneFramePhaseAngle = np.angle(dfNeighborsOneFramehexaOrdPara, deg=True)
 dfNeighborsOneFrameModulii = np.absolute(dfNeighborsOneFramehexaOrdPara)
 dfNeighborsOneFrameModulii.mean()
 dfNeighborsOneFrameCosPhaseAngle = np.cos(dfNeighborsOneFramePhaseAngle)
@@ -3042,7 +2655,7 @@ NeighborCountSeries = dfNeighborsOneFrame['neighborCount']
 binEdgesNeighborCount = list(range(NeighborCountSeries.min(), NeighborCountSeries.max() + 2))
 count1, _ = np.histogram(np.asarray(NeighborCountSeries), binEdgesNeighborCount)
 # count1 = np.asarray(dfNeighborsOneFrame['neighborCount'].value_counts().sort_index())
-entropyByNeighborCount1 = ShannonEntropy(count1)
+entropyByNeighborCount1 = fsr.shannon_entropy(count1)
 fig, ax = plt.subplots(1, 1, figsize=(10, 15))
 ax.bar(binEdgesNeighborCount[:-1], count1, align='edge', width=0.5)
 ax.set_xlabel('neighbor counts', {'size': 15})
@@ -3053,7 +2666,7 @@ fig.show()
 
 neighborCountWeightedSeries = dfNeighborsOneFrame['neighborCountWeighted']
 count2, _ = np.histogram(np.asarray(neighborCountWeightedSeries), binEdgesNeighborCountWeighted)
-entropyByNeighborCountWeighted2 = ShannonEntropy(count2)
+entropyByNeighborCountWeighted2 = fsr.shannon_entropy(count2)
 fig, ax = plt.subplots(1, 1, figsize=(10, 15))
 ax.bar(binEdgesNeighborCountWeighted[:-1], count2, align='edge', width=0.5)
 ax.set_xlabel('neighbor counts weighted', {'size': 15})
@@ -3065,7 +2678,7 @@ fig.show()
 
 neighborDistancesList = np.concatenate(dfNeighborsOneFrame['neighborDistances'].tolist())
 count3, _ = np.histogram(np.asarray(neighborDistancesList), binEdgesNeighborDistances)
-entropyByNeighborDistances3 = ShannonEntropy(count3)
+entropyByNeighborDistances3 = fsr.shannon_entropy(count3)
 fig, ax = plt.subplots(1, 1, figsize=(10, 15))
 ax.bar(binEdgesNeighborDistances[:-1], count3, align='edge', width=0.2)
 ax.set_xlabel('neighbor distances', {'size': 15})
@@ -3076,7 +2689,7 @@ fig.show()
 
 localDensitiesList = dfNeighborsOneFrame['localDensity'].tolist()
 count4, _ = np.histogram(np.asarray(localDensitiesList), binEdgesLocalDensities)
-entropyByLocalDensities4 = ShannonEntropy(count4)
+entropyByLocalDensities4 = fsr.shannon_entropy(count4)
 fig, ax = plt.subplots(1, 1, figsize=(10, 15))
 ax.bar(binEdgesLocalDensities[:-1], count4, align='edge', width=0.02)
 ax.set_xlabel('local densities', {'size': 15})
@@ -3226,11 +2839,11 @@ if outputVideo == 1:
 for currentFrameNum in progressbar.progressbar(range(len(tiffFileList))):
     currentFrameBGR = cv.imread(tiffFileList[currentFrameNum])
     currentFrameDraw = currentFrameBGR.copy()
-    currentFrameDraw = DrawRafts(currentFrameDraw, raftLocations[:, currentFrameNum, :], raftRadii[:, currentFrameNum],
-                                 numOfRafts)
-    currentFrameDraw = DrawRaftNumber(currentFrameDraw, raftLocations[:, currentFrameNum, :], numOfRafts)
-    currentFrameDraw = DrawVoronoi(currentFrameDraw, raftLocations[:, currentFrameNum, :])
-    currentFrameDraw = DrawNeighborCounts(currentFrameDraw, raftLocations[:, currentFrameNum, :], numOfRafts)
+    currentFrameDraw = fsr.draw_rafts(currentFrameDraw, raftLocations[:, currentFrameNum, :],
+                                      raftRadii[:, currentFrameNum], numOfRafts)
+    currentFrameDraw = fsr.draw_raft_number(currentFrameDraw, raftLocations[:, currentFrameNum, :], numOfRafts)
+    currentFrameDraw = fsr.draw_voronoi(currentFrameDraw, raftLocations[:, currentFrameNum, :])
+    currentFrameDraw = fsr.draw_neighbor_counts(currentFrameDraw, raftLocations[:, currentFrameNum, :], numOfRafts)
     if outputImage == 1:
         outputImageName = date + '_' + str(numOfRafts) + 'Rafts_' + str(batchNum) + '_' + str(
             spinSpeed) + 'rps_Voronoi_' + str(currentFrameNum + 1).zfill(4) + '.jpg'
@@ -3262,7 +2875,7 @@ numOfSamples = (numOfFrames - widthOfInterval) // samplingGap + 1
 sampleFrameNums = np.arange(widthOfInterval, numOfFrames, samplingGap)
 
 # pretreatment of position data
-raftOrbitingAnglesAdjusted = adjust_orbiting_angles2(raftOrbitingAngles, orbiting_angles_diff_threshold=200)
+raftOrbitingAnglesAdjusted = fsr.adjust_orbiting_angles2(raftOrbitingAngles, orbiting_angles_diff_threshold=200)
 raftVelocityR = np.gradient(raftOrbitingDistances, axis=1)
 raftVelocityTheta = np.gradient(raftOrbitingAnglesAdjusted, axis=1)
 raftVelocityNormPolar = np.sqrt(
@@ -3290,40 +2903,40 @@ t1 = time.perf_counter()
 
 for i, endOfInterval in enumerate(sampleFrameNums):
     distancesMatrix = raftOrbitingDistances[:, endOfInterval - widthOfInterval:endOfInterval]
-    mutualInfoAllSamplesAllRafts[:, :, i, 0] = MutualInfoMatrix(distancesMatrix, numOfBins)
+    mutualInfoAllSamplesAllRafts[:, :, i, 0] = fsr.mutual_info_matrix(distancesMatrix, numOfBins)
 
     angleMatrix = raftOrbitingAnglesAdjusted[:, endOfInterval - widthOfInterval:endOfInterval]
-    mutualInfoAllSamplesAllRafts[:, :, i, 1] = MutualInfoMatrix(angleMatrix, numOfBins)
+    mutualInfoAllSamplesAllRafts[:, :, i, 1] = fsr.mutual_info_matrix(angleMatrix, numOfBins)
 
     coordinateXMatrix = raftLocations[:, endOfInterval - widthOfInterval:endOfInterval, 0]
-    mutualInfoAllSamplesAllRafts[:, :, i, 2] = MutualInfoMatrix(coordinateXMatrix, numOfBins)
+    mutualInfoAllSamplesAllRafts[:, :, i, 2] = fsr.mutual_info_matrix(coordinateXMatrix, numOfBins)
 
     coordinateYMatrix = raftLocations[:, endOfInterval - widthOfInterval:endOfInterval, 1]
-    mutualInfoAllSamplesAllRafts[:, :, i, 3] = MutualInfoMatrix(coordinateYMatrix, numOfBins)
+    mutualInfoAllSamplesAllRafts[:, :, i, 3] = fsr.mutual_info_matrix(coordinateYMatrix, numOfBins)
 
     velocityRMatrix = raftVelocityR[:, endOfInterval - widthOfInterval:endOfInterval]
-    mutualInfoAllSamplesAllRafts[:, :, i, 4] = MutualInfoMatrix(velocityRMatrix, numOfBins)
+    mutualInfoAllSamplesAllRafts[:, :, i, 4] = fsr.mutual_info_matrix(velocityRMatrix, numOfBins)
 
     velocityThetaMatrix = raftVelocityTheta[:, endOfInterval - widthOfInterval:endOfInterval]
-    mutualInfoAllSamplesAllRafts[:, :, i, 5] = MutualInfoMatrix(velocityThetaMatrix, numOfBins)
+    mutualInfoAllSamplesAllRafts[:, :, i, 5] = fsr.mutual_info_matrix(velocityThetaMatrix, numOfBins)
 
     velocityNormPolarMatrix = raftVelocityNormPolar[:, endOfInterval - widthOfInterval:endOfInterval]
-    mutualInfoAllSamplesAllRafts[:, :, i, 6] = MutualInfoMatrix(velocityNormPolarMatrix, numOfBins)
+    mutualInfoAllSamplesAllRafts[:, :, i, 6] = fsr.mutual_info_matrix(velocityNormPolarMatrix, numOfBins)
 
     velocityXMatrix = raftVelocityX[:, endOfInterval - widthOfInterval:endOfInterval]
-    mutualInfoAllSamplesAllRafts[:, :, i, 7] = MutualInfoMatrix(velocityXMatrix, numOfBins)
+    mutualInfoAllSamplesAllRafts[:, :, i, 7] = fsr.mutual_info_matrix(velocityXMatrix, numOfBins)
 
     velocityYMatrix = raftVelocityY[:, endOfInterval - widthOfInterval:endOfInterval]
-    mutualInfoAllSamplesAllRafts[:, :, i, 8] = MutualInfoMatrix(velocityYMatrix, numOfBins)
+    mutualInfoAllSamplesAllRafts[:, :, i, 8] = fsr.mutual_info_matrix(velocityYMatrix, numOfBins)
 
     velocityNormXYMatrix = raftVelocityNormXY[:, endOfInterval - widthOfInterval:endOfInterval]
-    mutualInfoAllSamplesAllRafts[:, :, i, 9] = MutualInfoMatrix(velocityNormXYMatrix, numOfBins)
+    mutualInfoAllSamplesAllRafts[:, :, i, 9] = fsr.mutual_info_matrix(velocityNormXYMatrix, numOfBins)
 
 mutualInfoAllSamplesAvgOverAllRafts = mutualInfoAllSamplesAllRafts.mean((0, 1))
 mutualInfoAllSamplesAvgOverAllRaftsSelfMIOnly = np.trace(mutualInfoAllSamplesAllRafts, axis1=0, axis2=1) / numOfRafts
-mutualInfoAllSamplesAvgOverAllRaftsExcludingSelfMI = (
-                                                                 mutualInfoAllSamplesAvgOverAllRafts * numOfRafts - mutualInfoAllSamplesAvgOverAllRaftsSelfMIOnly) / (
-                                                                 numOfRafts - 1)
+mutualInfoAllSamplesAvgOverAllRaftsExcludingSelfMI = \
+    (mutualInfoAllSamplesAvgOverAllRafts * numOfRafts - mutualInfoAllSamplesAvgOverAllRaftsSelfMIOnly) / (numOfRafts
+                                                                                                          - 1)
 
 mutualInfoAvg = mutualInfoAllSamplesAvgOverAllRafts.mean(axis=0)
 mutualInfoAvgSelfMIOnly = mutualInfoAllSamplesAvgOverAllRaftsSelfMIOnly.mean(axis=0)
@@ -3368,18 +2981,15 @@ elif dataSelection == 9:
     timeSeries = raftVelocityNormXY[raftNum, frameNum - widthOfInterval:frameNum]
 
 count, edges = np.histogram(timeSeries, numOfBins)
-entropy = ShannonEntropy(count)
+entropy = fsr.shannon_entropy(count)
 
 fig, ax = plt.subplots(2, 1, figsize=(10, 15))
 ax[0].bar(edges[:-1], count, align='edge', width=(edges.max() - edges.min()) / numOfBins / 2)
 ax[0].set_xlabel('time series id = {}'.format(dataSelection), {'size': 15})
 ax[0].set_ylabel('count', {'size': 15})
 ax[0].set_title(
-    'histogram of time series id = {} for raft {} at frame {}, entropy: {:.3} bits,  {} bins'.format(dataSelection,
-                                                                                                     raftNum, frameNum,
-                                                                                                     entropy,
-                                                                                                     numOfBins),
-    {'size': 15})
+    'histogram of time series id = {} for raft {} at frame {}, entropy: {:.3} bits,  {} bins'.format(
+        dataSelection, raftNum, frameNum, entropy, numOfBins), {'size': 15})
 ax[0].legend(['raft {}'.format(raftNum)])
 ax[1].plot(timeSeries, np.arange(widthOfInterval), '-o')
 ax[1].set_xlabel('time series id = {}'.format(dataSelection), {'size': 15})
@@ -3432,15 +3042,15 @@ elif dataSelection == 9:
     timeSeries2 = raftVelocityNormXY[raft2Num, frameNum - widthOfInterval:frameNum]
 
 count1, _ = np.histogram(timeSeries1, numOfBins)
-entropy1 = ShannonEntropy(count1)
+entropy1 = fsr.shannon_entropy(count1)
 
 count2, _ = np.histogram(timeSeries2, numOfBins)
-entropy2 = ShannonEntropy(count2)
+entropy2 = fsr.shannon_entropy(count2)
 
 count, xEdges, yEdges = np.histogram2d(timeSeries1, timeSeries2, numOfBins)
-jointEntropy = ShannonEntropy(count)
-mutualInformation = mutual_info_score(None, None, contingency=count) * np.log2(
-    np.e)  # in unit of nats, * np.log2(np.e) to convert it to bits
+jointEntropy = fsr.shannon_entropy(count)
+mutualInformation = mutual_info_score(None, None, contingency=count) * np.log2(np.e)
+# in unit of nats, * np.log2(np.e) to convert it to bits
 
 fig, ax = plt.subplots(1, 1, figsize=(7, 7))
 X, Y = np.meshgrid(xEdges, yEdges)
@@ -3593,7 +3203,7 @@ ax3.plot(rollingCorr)
 fig3.show()
 
 frameRate = 200
-f, powerSpectrum = FFTDistances(frameRate, rollingCorr)
+f, powerSpectrum = fsr.fft_distances(frameRate, rollingCorr)
 
 fig4, ax4 = plt.subplots()
 ax4.plot(f, powerSpectrum)
@@ -3676,12 +3286,12 @@ raftOrbitingAngles = np.zeros((numOfRafts, numOfFrames))
 
 for currentFrameNum in np.arange(numOfFrames):
     for raftID in np.arange(numOfRafts):
-        raftOrbitingDistances[raftID, currentFrameNum] = calculate_distance(raftOrbitingCenters[currentFrameNum, :],
-                                                                           raftLocations[raftID, currentFrameNum, :])
-        raftOrbitingAngles[raftID, currentFrameNum] = calculate_polar_angle(raftOrbitingCenters[currentFrameNum, :],
-                                                                          raftLocations[raftID, currentFrameNum, :])
+        raftOrbitingDistances[raftID, currentFrameNum] = fsr.calculate_distance(
+            raftOrbitingCenters[currentFrameNum, :], raftLocations[raftID, currentFrameNum, :])
+        raftOrbitingAngles[raftID, currentFrameNum] = fsr.calculate_polar_angle(
+            raftOrbitingCenters[currentFrameNum, :], raftLocations[raftID, currentFrameNum, :])
 
 aa = np.array([3, 16, 49, 49, 21, 6, 1])
 bb = np.array([498, 116, 116, 8, 4, 22, 2, 2, 4, 8, 8, 0, 2, 0, 2, 24])
-Eaa = ShannonEntropy(aa)
-Ebb = ShannonEntropy(bb)
+Eaa = fsr.shannon_entropy(aa)
+Ebb = fsr.shannon_entropy(bb)
