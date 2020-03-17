@@ -42,7 +42,7 @@ _, mainFolders, _ = next(rootFolderTreeGen)
 #    os.chdir(mainFolders[mainFolderID])
 
 
-mainFolderID = 4
+mainFolderID = 0
 os.chdir(mainFolders[mainFolderID])
 
 dataFileList = glob.glob('*.dat')
@@ -410,8 +410,8 @@ else:
 tiffFileList = glob.glob('*.tiff')
 tiffFileList.sort()
 
-outputImage = 1
-outputVideo = 0
+outputImage = 0
+outputVideo = 1
 
 currentFrameBGR = cv.imread(tiffFileList[0])
 outputFrameRate = 5.0
