@@ -1,3 +1,15 @@
+# -*- coding: utf-8 -*-
+"""
+Sections:
+- import libraries and define functions
+- loading all the data in a specific main folder into mainDataList
+- load data corresponding to a specific experiment (subfolder or video) into variables
+- load variables from postprocessed file corresponding to the specific experiment above
+- mutual information analysis
+- plots for mutual information calculations
+- Analysis with cross-correlation
+- testing permuatation entropy
+"""
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -81,11 +93,30 @@ for dataID in range(len(dataFileList)):
 # %% load data corresponding to a specific experiment (subfolder or video) into variables
 
 dataID = 0
+# explicitly load variables from data file
+date = mainDataList[dataID]['date']
+batchNum = mainDataList[dataID]['batchNum']
+spinSpeed = mainDataList[dataID]['spinSpeed']
+numOfRafts = mainDataList[dataID]['numOfRafts']
+numOfFrames = mainDataList[dataID]['numOfFrames']
+raftRadii = mainDataList[dataID]['raftRadii']
+raftLocations = mainDataList[dataID]['raftLocations']
+raftOrbitingCenters = mainDataList[dataID]['raftOrbitingCenters']
+raftOrbitingDistances = mainDataList[dataID]['raftOrbitingDistances']
+raftOrbitingAngles = mainDataList[dataID]['raftOrbitingAngles']
+raftOrbitingLayerIndices = mainDataList[dataID]['raftOrbitingLayerIndices']
+magnification = mainDataList[dataID]['magnification']
+commentsSub = mainDataList[dataID]['commentsSub']
+currentFrameGray = mainDataList[dataID]['currentFrameGray']
+raftEffused = mainDataList[dataID]['raftEffused']
+subfolderName = mainDataList[dataID]['subfolders'][mainDataList[dataID]['expID']]
 
 variableListFromProcessedFile = list(mainDataList[dataID].keys())
 
+# load the rest if necessary
 for key, value in mainDataList[dataID].items():  # loop through key-value pairs of python dictionary
-    globals()[key] = value
+    if not (key in globals()):
+        globals()[key] = value
 
 outputDataFileName = date + '_' + str(numOfRafts) + 'Rafts_' + str(batchNum) + '_' + str(spinSpeed) + 'rps_' + str(
     magnification) + 'x_' + commentsSub
@@ -425,3 +456,102 @@ fig.show()
 
 
 # plt.close('all')
+
+# %%   Analysis with cross-correlation
+raft1Num = 89
+raft2Num = 90
+
+frameNum = 200
+widthOfInterval = 100
+
+traj1 = raftOrbitingDistances[raft1Num, frameNum - widthOfInterval:frameNum + widthOfInterval]
+traj2 = raftOrbitingDistances[raft2Num, frameNum - widthOfInterval:frameNum]
+
+fig1, ax1 = plt.subplots()
+ax1.plot(np.arange(frameNum - widthOfInterval, frameNum + widthOfInterval), traj1)
+ax1.plot(np.arange(frameNum - widthOfInterval, frameNum), traj2)
+fig1.show()
+
+fluctuation1 = traj1 - np.mean(traj1)
+fluctuation2 = traj2 - np.mean(traj2)
+
+fig2, ax2 = plt.subplots()
+ax2.plot(np.arange(frameNum - widthOfInterval, frameNum + widthOfInterval), fluctuation1)
+ax2.plot(np.arange(frameNum - widthOfInterval, frameNum), fluctuation2)
+fig2.show()
+
+rollingCorr = np.correlate(fluctuation1, fluctuation2, 'valid')
+fig3, ax3 = plt.subplots()
+ax3.plot(rollingCorr)
+fig3.show()
+
+frameRate = 200
+f, powerSpectrum = fsr.fft_distances(frameRate, rollingCorr)
+
+fig4, ax4 = plt.subplots()
+ax4.plot(f, powerSpectrum)
+fig4.show()
+
+plt.close('all')
+
+# %% testing permuatation entropy
+
+import numpy as np
+import itertools
+
+
+def permutation_entropy(time_series, m, delay):
+    """Calculate the Permutation Entropy
+    Args:
+        time_series: Time series for analysis
+        m: Order of permutation entropy
+        delay: Time delay
+    Returns:
+        Vector containing Permutation Entropy
+    Reference:
+        [1] Massimiliano Zanin et al. Permutation Entropy and Its Main Biomedical and Econophysics Applications:
+            A Review. http://www.mdpi.com/1099-4300/14/8/1553/pdf
+        [2] Christoph Bandt and Bernd Pompe. Permutation entropy — a natural complexity
+            measure for time series. http://stubber.math-inf.uni-greifswald.de/pub/full/prep/2001/11.pdf
+        [3] http://www.mathworks.com/matlabcentral/fileexchange/37289-permutation-entropy/content/pec.m
+    """
+    n = len(time_series)
+    permutations = np.array(list(itertools.permutations(range(m))))
+    c = [0] * len(permutations)
+
+    for i in range(n - delay * (m - 1)):
+        # sorted_time_series =    np.sort(time_series[i:i+delay*m:delay], kind='quicksort')
+        sorted_index_array = np.array(np.argsort(time_series[i:i + delay * m:delay], kind='quicksort'))
+        for j in range(len(permutations)):
+            if abs(permutations[j] - sorted_index_array).any() == 0:
+                c[j] += 1
+
+    c = [element for element in c if element != 0]
+    p = np.divide(np.array(c), float(sum(c)))
+    pe = -sum(p * np.log(p))
+    return pe
+
+
+time_series = raftOrbitingDistances[0, :].copy()
+m = 3  # order = 2
+delay = 1
+
+n = len(time_series)
+
+permutations = np.array(list(itertools.permutations(range(m))))
+
+c = [0] * len(permutations)
+
+for i in range(n - delay * (m - 1)):
+    # sorted_time_series =    np.sort(time_series[i:i+delay*m:delay], kind='quicksort')
+    sorted_index_array = np.array(np.argsort(time_series[i:i + delay * m:delay], kind='quicksort'))
+    for j in range(len(permutations)):
+        if abs(permutations[j] - sorted_index_array).any() == 0:
+            c[j] += 1
+
+c = [element for element in c if element != 0]
+p = np.divide(np.array(c), float(sum(c)))
+pe = -sum(p * np.log(p))
+
+pe = permutation_entropy(time_series, 3, 1)
+

@@ -1,3 +1,15 @@
+# -*- coding: utf-8 -*-
+"""
+Sections:
+- import libraries and define functions
+- loading all the data in a specific main folder into mainDataList
+- load data corresponding to a specific experiment (subfolder or video) into variables
+- load variables from postprocessed file corresponding to the specific experiment above
+- some simple plots just to look at the data for one specific experiment
+- cluster analysis
+- some plots to look at pairwise data and cluster information.
+- drawing clusters and saving into movies
+"""
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -83,10 +95,30 @@ for dataID in range(len(dataFileList)):
 
 dataID = 0
 
+# explicitly load variables from data file
+date = mainDataList[dataID]['date']
+batchNum = mainDataList[dataID]['batchNum']
+spinSpeed = mainDataList[dataID]['spinSpeed']
+numOfRafts = mainDataList[dataID]['numOfRafts']
+numOfFrames = mainDataList[dataID]['numOfFrames']
+raftRadii = mainDataList[dataID]['raftRadii']
+raftLocations = mainDataList[dataID]['raftLocations']
+raftOrbitingCenters = mainDataList[dataID]['raftOrbitingCenters']
+raftOrbitingDistances = mainDataList[dataID]['raftOrbitingDistances']
+raftOrbitingAngles = mainDataList[dataID]['raftOrbitingAngles']
+raftOrbitingLayerIndices = mainDataList[dataID]['raftOrbitingLayerIndices']
+magnification = mainDataList[dataID]['magnification']
+commentsSub = mainDataList[dataID]['commentsSub']
+currentFrameGray = mainDataList[dataID]['currentFrameGray']
+raftEffused = mainDataList[dataID]['raftEffused']
+subfolderName = mainDataList[dataID]['subfolders'][mainDataList[dataID]['expID']]
+
 variableListFromProcessedFile = list(mainDataList[dataID].keys())
 
+# load the rest of the variables if necessary
 for key, value in mainDataList[dataID].items():  # loop through key-value pairs of python dictionary
-    globals()[key] = value
+    if not (key in globals()):
+        globals()[key] = value
 
 outputDataFileName = date + '_' + str(numOfRafts) + 'Rafts_' + str(batchNum) + '_' + str(spinSpeed) + 'rps_' + str(
     magnification) + 'x_' + commentsSub
@@ -170,7 +202,7 @@ fig.show()
 
 # plt.close('all')
 
-# %% clucster analysis
+# %% cluster analysis
 radius = raftRadii.mean()  # pixel  check raftRadii.mean()
 scaleBar = 300 / radius / 2  # micron per pixel
 
@@ -442,3 +474,4 @@ if outputVideo == 1:
     videoOut.release()
 
 # plt.imshow(currentFrameDraw[:,:,::-1])
+

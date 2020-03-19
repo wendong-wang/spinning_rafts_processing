@@ -1,3 +1,15 @@
+# -*- coding: utf-8 -*-
+"""
+Sections:
+- import libraries and define functions
+- loading all the data in a specific main folder into mainDataList
+- load data corresponding to a specific experiment (subfolder or video) into variables
+- load variables from postprocessed file corresponding to the specific experiment above
+- Voronoi analysis
+- plots for Voronoi analysis
+- drawing Voronoi diagrams and saving into movies
+"""
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -83,10 +95,32 @@ for dataID in range(len(dataFileList)):
 
 dataID = 0
 
+
+# explicitly load variables from data file
+date = mainDataList[dataID]['date']
+batchNum = mainDataList[dataID]['batchNum']
+spinSpeed = mainDataList[dataID]['spinSpeed']
+numOfRafts = mainDataList[dataID]['numOfRafts']
+numOfFrames = mainDataList[dataID]['numOfFrames']
+raftRadii = mainDataList[dataID]['raftRadii']
+raftLocations = mainDataList[dataID]['raftLocations']
+raftOrbitingCenters = mainDataList[dataID]['raftOrbitingCenters']
+raftOrbitingDistances = mainDataList[dataID]['raftOrbitingDistances']
+raftOrbitingAngles = mainDataList[dataID]['raftOrbitingAngles']
+raftOrbitingLayerIndices = mainDataList[dataID]['raftOrbitingLayerIndices']
+magnification = mainDataList[dataID]['magnification']
+commentsSub = mainDataList[dataID]['commentsSub']
+currentFrameGray = mainDataList[dataID]['currentFrameGray']
+raftEffused = mainDataList[dataID]['raftEffused']
+subfolderName = mainDataList[dataID]['subfolders'][mainDataList[dataID]['expID']]
+
+
 variableListFromProcessedFile = list(mainDataList[dataID].keys())
 
+# load the rest of variables if necessary.
 for key, value in mainDataList[dataID].items():  # loop through key-value pairs of python dictionary
-    globals()[key] = value
+    if not (key in globals()):
+        globals()[key] = value
 
 outputDataFileName = date + '_' + str(numOfRafts) + 'Rafts_' + str(batchNum) + '_' + str(spinSpeed) + 'rps_' + str(
     magnification) + 'x_' + commentsSub
@@ -147,6 +181,20 @@ dfNeighborsAllFrames = pd.DataFrame(columns=['frameNum', 'raftID', 'localDensity
                                              'ridgeLengthsScaledNormalizedBySum',
                                              'ridgeLengthsScaledNormalizedByMax'])
 
+# code copied from cluster analysis for calculating raft pairwise distances
+raftPairwiseDistances = np.zeros((numOfRafts, numOfRafts, numOfFrames))
+raftPairwiseEdgeEdgeDistancesSmallest = np.zeros((numOfRafts, numOfFrames))
+raftPairwiseDistancesInRadius = np.zeros((numOfRafts, numOfRafts, numOfFrames))
+radius = raftRadii.mean()  # pixel  check raftRadii.mean()
+for frameNum in np.arange(numOfFrames):
+    raftPairwiseDistances[:, :, frameNum] = scipy_distance.cdist(raftLocations[:, frameNum, :],
+                                                                 raftLocations[:, frameNum, :], 'euclidean')
+    # smallest nonzero eedistances is assigned to one raft as the pairwise distance,
+    raftPairwiseEdgeEdgeDistancesSmallest[:, frameNum] = np.partition(raftPairwiseDistances[:, :, frameNum], 1, axis=1)[
+                                                         :, 1] - radius * 2
+raftPairwiseDistancesInRadius = raftPairwiseDistances / radius
+
+
 entropyByNeighborCount = np.zeros(numOfFrames)
 entropyByNeighborCountWeighted = np.zeros(numOfFrames)
 entropyByNeighborDistances = np.zeros(numOfFrames)
@@ -179,19 +227,19 @@ tetraticOrderParameterModuliiAvgs = np.zeros(numOfFrames)
 tetraticOrderParameterModuliiStds = np.zeros(numOfFrames)
 
 radialDistributionFunction = np.zeros((numOfFrames, len(radialRangeArray)))  # pair correlation function: g(r)
-spatialCorrHexaOrderPara = np.zeros(
-    (numOfFrames, len(radialRangeArray)))  # spatial correlation of hexatic order paramter: g6(r)
-spatialCorrPentaOrderPara = np.zeros(
-    (numOfFrames, len(radialRangeArray)))  # spatial correlation of pentatic order paramter: g5(r)
-spatialCorrTetraOrderPara = np.zeros(
-    (numOfFrames, len(radialRangeArray)))  # spatial correlation of tetratic order paramter: g4(r)
+spatialCorrHexaOrderPara = np.zeros((numOfFrames, len(radialRangeArray)))
+# spatial correlation of hexatic order paramter: g6(r)
+spatialCorrPentaOrderPara = np.zeros((numOfFrames, len(radialRangeArray)))
+# spatial correlation of pentatic order paramter: g5(r)
+spatialCorrTetraOrderPara = np.zeros((numOfFrames, len(radialRangeArray)))
+# spatial correlation of tetratic order paramter: g4(r)
 
-spatialCorrHexaBondOrientationOrder = np.zeros(
-    (numOfFrames, len(radialRangeArray)))  # spatial correlation of bond orientation parameter: g6(r)/g(r)
-spatialCorrPentaBondOrientationOrder = np.zeros(
-    (numOfFrames, len(radialRangeArray)))  # spatial correlation of bond orientation parameter: g5(r)/g(r)
-spatialCorrTetraBondOrientationOrder = np.zeros(
-    (numOfFrames, len(radialRangeArray)))  # spatial correlation of bond orientation parameter: g4(r)/g(r)
+spatialCorrHexaBondOrientationOrder = np.zeros((numOfFrames, len(radialRangeArray)))
+# spatial correlation of bond orientation parameter: g6(r)/g(r)
+spatialCorrPentaBondOrientationOrder = np.zeros((numOfFrames, len(radialRangeArray)))
+# spatial correlation of bond orientation parameter: g5(r)/g(r)
+spatialCorrTetraBondOrientationOrder = np.zeros((numOfFrames, len(radialRangeArray)))
+# spatial correlation of bond orientation parameter: g4(r)/g(r)
 
 drawingNeighborCountWeighted = 1  # 0- no drawing, 1- drawing neighborCount, 2 - drawing neighborCountWeighted
 
