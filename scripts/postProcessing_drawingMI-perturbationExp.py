@@ -1,10 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on Thu Aug 22 08:57:39 2019
-
-@author: wwang
-
-Draw mutual information values as color-dots for predator-prey experiments
+ - Draw mutual information values as color-dots for perturbation experiments
 """
 
 import os, glob, shelve
@@ -69,6 +65,24 @@ for dataID in range(len(dataFileList)):
 # select the right data file
 dataID = 0
 
+# explicitly load variables from data file
+date = mainDataList[dataID]['date']
+batchNum = mainDataList[dataID]['batchNum']
+spinSpeed = mainDataList[dataID]['spinSpeed']
+numOfRafts = mainDataList[dataID]['numOfRafts']
+numOfFrames = mainDataList[dataID]['numOfFrames']
+raftRadii = mainDataList[dataID]['raftRadii']
+raftLocations = mainDataList[dataID]['raftLocations']
+raftOrbitingCenters = mainDataList[dataID]['raftOrbitingCenters']
+raftOrbitingDistances = mainDataList[dataID]['raftOrbitingDistances']
+raftOrbitingAngles = mainDataList[dataID]['raftOrbitingAngles']
+raftOrbitingLayerIndices = mainDataList[dataID]['raftOrbitingLayerIndices']
+magnification = mainDataList[dataID]['magnification']
+commentsSub = mainDataList[dataID]['commentsSub']
+currentFrameGray = mainDataList[dataID]['currentFrameGray']
+raftEffused = mainDataList[dataID]['raftEffused']
+subfolderName = mainDataList[dataID]['subfolders'][mainDataList[dataID]['expID']]
+
 variableListFromProcessedFile = list(mainDataList[dataID].keys())
 
 for key, value in mainDataList[dataID].items(): # loop through key-value pairs of python dictionary
@@ -80,7 +94,8 @@ for key, value in mainDataList[dataID].items(): # loop through key-value pairs o
 analysisType = 4 # 1: cluster, 2: cluster+Voronoi, 3: MI, 4: cluster+Voronoi+MI, 5: velocity/MSD + cluster + Voronoi
 
 # the undefined variables for the shelve data file name are loaded from the processed file
-shelveDataFileName = date + '_' + str(numOfRafts) + 'Rafts_' + str(batchNum) + '_' + str(spinSpeed) + 'rps_' + str(magnification) + 'x_' + 'postprocessed' + str(analysisType)
+shelveDataFileName = date + '_' + str(numOfRafts) + 'Rafts_' + str(batchNum) + '_' + str(spinSpeed) + 'rps_' \
+                     + str(magnification) + 'x_' + 'postprocessed' + str(analysisType)
 
 shelveDataFileExist = glob.glob(shelveDataFileName+'.dat')
 
@@ -88,12 +103,18 @@ if shelveDataFileExist:
     print(shelveDataFileName + ' exists, load additional variables. ' )
     tempShelf = shelve.open(shelveDataFileName)
     variableListFromPostProcessedFile = list(tempShelf.keys())
-    
-    for key in tempShelf: # just loop through all the keys in the dictionary
-        globals()[key] = tempShelf[key]
+
+    mutualInfoAllSamplesAllRafts = tempShelf["mutualInfoAllSamplesAllRafts"]
+    numOfSamples = tempShelf['numOfSamples']
+    samplingGap = tempShelf['samplingGap']
+
+    for key in tempShelf:
+        # just loop through all the keys in the dictionary
+        if not (key in globals()):
+            globals()[key] = tempShelf[key]
     
     tempShelf.close()
-    print('loading complete.' )
+    print('loading complete.')
     
 elif len(shelveDataFileExist) == 0:
     print(shelveDataFileName + ' does not exist')
@@ -102,23 +123,24 @@ elif len(shelveDataFileExist) == 0:
 
 # the variable mutualInfoAllSamplesAllRafts is loaded from the postprocessed data file
 # it has dimentions (numOfRafts, numOfRafts, numOfSamples, 10)
-# for the last dimension, 
-    
+# for the last dimension,
+
 # 0 - neighbor distances smallest; 1 - neighbor distances mean, 2 - neighbor distances max
-mutualInfoSelected = mutualInfoAllSamplesAllRafts[:,:,:,0].copy()
+mutualInfoSelected = mutualInfoAllSamplesAllRafts[:, :, :, 0].copy()
 
 #numOfRafts, numOfRafts, numOfSamples = mutualInfoSelected.shape
 
-raftMIAvgOverPairs = np.empty((numOfSamples, numOfRafts)) # numOfSamples and numOfRafts are read from processed and postprocessed data
+raftMIAvgOverPairs = np.empty((numOfSamples, numOfRafts))
+# numOfSamples and numOfRafts are read from processed and postprocessed data
 
 for t in range(numOfSamples):
     mutualInfoInOneSample = mutualInfoSelected[:,:,t]
-    mutualInfoInOneSampleSummedExcludingSelf = mutualInfoInOneSample.sum(axis=0) - mutualInfoInOneSample.diagonal()  
+    mutualInfoInOneSampleSummedExcludingSelf = mutualInfoInOneSample.sum(axis=0) - mutualInfoInOneSample.diagonal()
     if t < sampleNumForRaftNumChange :
-        raftMIAvgOverPairs[t,:] = mutualInfoInOneSampleSummedExcludingSelf/numOfRafts
-    else : 
-        raftMIAvgOverPairs[t,:] = mutualInfoInOneSampleSummedExcludingSelf/(numOfRafts + numOfRaftChanged)
-        
+        raftMIAvgOverPairs[t, :] = mutualInfoInOneSampleSummedExcludingSelf/numOfRafts
+    else :
+        raftMIAvgOverPairs[t, :] = mutualInfoInOneSampleSummedExcludingSelf/(numOfRafts + numOfRaftChanged)
+
 
 #%% drawing and output data
 
@@ -128,35 +150,39 @@ plt.ioff()
 plt.style.use('dark_background')
 
 cmap = plt.cm.get_cmap('inferno')
-norm = plt.cm.colors.PowerNorm(0.4, vmin = raftMIAvgOverPairs.min(), vmax = raftMIAvgOverPairs.max()) 
+norm = plt.cm.colors.PowerNorm(0.4, vmin = raftMIAvgOverPairs.min(), vmax = raftMIAvgOverPairs.max())
 
 
 for i,time_steps in enumerate(range(0,numOfSamples)):
     fig, axes = plt.subplots(nrows=1, ncols=2,figsize=(18,9))
     ax = axes.flatten()
     ts=int(time_steps * samplingGap) # samplingGap is read from the postprocessed file
-    
+
     img1_name= os.path.join(tiffFileFolder, '2019-05-14_copperWireAsPredator.'+str(ts + 1).zfill(5)+'.tiff')
-    
+
     img1=plt.imread(img1_name)
-    
+
     _, height, _ = img1.shape
-    
-    ax[0].imshow(img1[::-1,:,:],origin='lower')
+
+    ax[0].imshow(img1[::-1, :, :], origin='lower')
     ax[0].set_xticks([])
     ax[0].set_yticks([])
     ax[0].set(aspect='equal', adjustable='box')
-    
-    
+
     raftl = raftLocations[:,ts,:] # raftLocations is read from the processed file
     if time_steps < sampleNumForRaftNumChange :
-        im=ax[1].scatter(raftl[:,0], height - raftl[:,1],s=raftMIAvgOverPairs[time_steps,:]*150,c=raftMIAvgOverPairs[time_steps,:], marker='o' , norm=mpl.colors.Normalize(), vmin=0, vmax=1.7, alpha=1.0,)
-    else :
-        im=ax[1].scatter(raftl[:numOfRaftChanged,0], height - raftl[:numOfRaftChanged,1],s=raftMIAvgOverPairs[time_steps,:numOfRaftChanged]*150,c=raftMIAvgOverPairs[time_steps,:numOfRaftChanged], marker='o' , norm=mpl.colors.Normalize(), vmin=0, vmax=1.7, alpha=1.0,)
+        im = ax[1].scatter(raftl[:,0], height - raftl[:,1],s=raftMIAvgOverPairs[time_steps,:]*150,
+                           c=raftMIAvgOverPairs[time_steps,:], marker='o', norm=mpl.colors.Normalize(),
+                           vmin=0, vmax=1.7, alpha=1.0,)
+    else:
+        im = ax[1].scatter(raftl[:numOfRaftChanged, 0], height - raftl[:numOfRaftChanged, 1],
+                           s=raftMIAvgOverPairs[time_steps,:numOfRaftChanged]*150,
+                           c=raftMIAvgOverPairs[time_steps,:numOfRaftChanged], marker='o',
+                           norm=mpl.colors.Normalize(), vmin=0, vmax=1.7, alpha=1.0,)
 
-    ax[1].set_xticks([])    
+    ax[1].set_xticks([])
     ax[1].set_yticks([])
-#    ax[1].set(aspect='equal')    
+#    ax[1].set(aspect='equal')
 
     cbar_ax = fig.add_axes([0.91, 0.15, 0.02, 0.7])
     fig.colorbar(im, cax=cbar_ax)
