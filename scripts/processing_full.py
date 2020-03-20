@@ -2,16 +2,12 @@
 """
 processing script for spinning rafts systems
 """
-# %% import necessary libraries and define functions
-
 import numpy as np
 import cv2 as cv
-
 import os
 import glob
 import shelve
 import progressbar
-
 import scripts.functions_spinning_rafts as fsr
 
 
@@ -65,7 +61,7 @@ regionWidth = 100
 regionHeight = 550
 maxNumOfRaftsInRegion = 20
 
-diffusionData = 0  # 1 - this is a diffusion data that only tracks one sigle particle.
+diffusionData = 0  # 1 - this is a diffusion data that only tracks one single particle.
 diffBoxRadius = 50
 diffBoxTopLeftX = topLeftX
 diffBoxTopLeftY = topLeftY
@@ -123,7 +119,7 @@ for mainFolderID in np.arange(2, 3):
             numOfRafts, batchNum, spinSpeed, spinUnit, magnification, commentsSub = \
                 fsr.parse_subfolder_name(videoFileList[expID])
             outputDataFileName = date + '_' + str(numOfRafts) + 'Rafts_' + str(batchNum) + '_' + str(spinSpeed) + 'rps'
-            if os.path.isfile(outputDataFileName + '.dat') == True:
+            if os.path.isfile(outputDataFileName + '.dat'):
                 errorMessage = '{0}.dat exists'.format(outputDataFileName)
                 print(errorMessage)
                 continue
@@ -136,7 +132,7 @@ for mainFolderID in np.arange(2, 3):
             outputDataFileName = \
                 date + '_' + str(numOfRafts) + 'Rafts_' + str(batchNum) + '_' + str(spinSpeed) + 'rps_' + \
                 str(magnification) + 'x_' + commentsSub
-            if os.path.isfile(outputDataFileName + '.dat') == True:
+            if os.path.isfile(outputDataFileName + '.dat'):
                 errorMessage = '{0}.dat exists'.format(outputDataFileName)
                 print(errorMessage)
                 continue
@@ -186,8 +182,8 @@ for mainFolderID in np.arange(2, 3):
             fsr.find_circles_adaptive(currentFrameGray, numOfRafts, radii_hough=radiusIntervalHough,
                                       adaptive_thres_blocksize=adaptiveThresBlocksize,
                                       adaptive_thres_const=adaptiveThresConst, min_sep_dist=minSepDist,
-                                      raft_center_threshold=raftCenterThreshold, topLeft_x=topLeftX,
-                                      topLeft_y=topLeftY, width_x=widthX, height_y=heightY)
+                                      raft_center_threshold=raftCenterThreshold, top_left_x=topLeftX,
+                                      top_left_y=topLeftY, width_x=widthX, height_y=heightY)
 
         if regionalSearch == 1:
             centersInRegion, radiiInRegion, countInRegion = \
@@ -195,7 +191,7 @@ for mainFolderID in np.arange(2, 3):
                                           adaptive_thres_blocksize=adaptiveThresBlocksize,
                                           adaptive_thres_const=adaptiveThresConst,
                                           min_sep_dist=minSepDist, raft_center_threshold=raftCenterThreshold,
-                                          topLeft_x=regionTopLeftX, topLeft_y=regionTopLeftY,
+                                          top_left_x=regionTopLeftX, top_left_y=regionTopLeftY,
                                           width_x=regionWidth, height_y=regionHeight)
             raftLocationsInRegion[:countInRegion, 0, :] = centersInRegion[:countInRegion, :]
             raftRadiiInRegion[:countInRegion, 0] = radiiInRegion[:countInRegion]
@@ -260,16 +256,16 @@ for mainFolderID in np.arange(2, 3):
             else:
                 currentFrameBGR = cv.imread(tiffFileList[currentFrameNum])
                 #                currentFrameGray = cv.imread(tiffFileList[currentFrameNum], 0)
-                currentFrameGray = currentFrameBGR[:, :,
-                                   1]  # use only green channel. We found green channel has the highest contrast.
+                currentFrameGray = currentFrameBGR[:, :, 1]
+                # use only green channel. We found green channel has the highest contrast.
 
             if diffusionData == 1:
-                # top left cornor of the next search box: x-coordingate
+                # top left corner of the next search box: x-coordinate
                 if raftLocations[0, currentFrameNum - 1, 0] - diffBoxRadius >= topLeftX:
                     diffBoxTopLeftX = raftLocations[0, currentFrameNum - 1, 0] - diffBoxRadius
                 else:
                     diffBoxTopLeftX = topLeftX
-                # top left cornor of the next search box: y-coordingate
+                # top left corner of the next search box: y-coordinate
                 if raftLocations[0, currentFrameNum - 1, 1] - diffBoxRadius >= topLeftY:
                     diffBoxTopLeftY = raftLocations[0, currentFrameNum - 1, 1] - diffBoxRadius
                 else:
@@ -291,8 +287,8 @@ for mainFolderID in np.arange(2, 3):
                                                                       adaptive_thres_const=adaptiveThresConst,
                                                                       min_sep_dist=minSepDist,
                                                                       raft_center_threshold=raftCenterThreshold,
-                                                                      topLeft_x=diffBoxTopLeftX,
-                                                                      topLeft_y=diffBoxTopLeftY,
+                                                                      top_left_x=diffBoxTopLeftX,
+                                                                      top_left_y=diffBoxTopLeftY,
                                                                       width_x=diffBoxWidthX, height_y=diffBoxHeightY)
 
             else:
@@ -303,7 +299,7 @@ for mainFolderID in np.arange(2, 3):
                                                                       adaptive_thres_const=adaptiveThresConst,
                                                                       min_sep_dist=minSepDist,
                                                                       raft_center_threshold=raftCenterThreshold,
-                                                                      topLeft_x=topLeftX, topLeft_y=topLeftY,
+                                                                      top_left_x=topLeftX, top_left_y=topLeftY,
                                                                       width_x=widthX, height_y=heightY)
 
             if regionalSearch == 1:
@@ -312,7 +308,7 @@ for mainFolderID in np.arange(2, 3):
                                               adaptive_thres_blocksize=adaptiveThresBlocksize,
                                               adaptive_thres_const=adaptiveThresConst,
                                               min_sep_dist=minSepDist, raft_center_threshold=raftCenterThreshold,
-                                              topLeft_x=regionTopLeftX, topLeft_y=regionTopLeftY,
+                                              top_left_x=regionTopLeftX, top_left_y=regionTopLeftY,
                                               width_x=regionWidth, height_y=regionHeight)
                 raftLocationsInRegion[:countInRegion, currentFrameNum, :] = centersInRegion[:countInRegion, :]
                 raftRadiiInRegion[:countInRegion, currentFrameNum] = radiiInRegion[:countInRegion]
@@ -343,7 +339,7 @@ for mainFolderID in np.arange(2, 3):
                 centers, radii, detectedNum = \
                     fsr.find_and_sort_circles(currentFrameGray, numOfRafts,
                                               prev_pos=raftLocations[:, currentFrameNum-1, :],
-                                              radii_Hough=radiusIntervalHough, thres_value=thresholdingValue,
+                                              radii_hough=radiusIntervalHough, thres_value=thresholdingValue,
                                               sigma_Canny=sigmaCanny, low_threshold_canny=lowThresholdCanny,
                                               high_threshold_canny=highThresholdCanny, max_displ=maxDisplacement)
 

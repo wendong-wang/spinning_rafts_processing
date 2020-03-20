@@ -1,39 +1,32 @@
 import numpy as np
-
 import cv2 as cv
-import time
-
 from skimage.transform import hough_circle, hough_circle_peaks
 from skimage.feature import canny
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial import distance as scipy_distance
 from scipy.spatial import Voronoi as ScipyVoronoi
 from sklearn.metrics import mutual_info_score
-from scipy.spatial import voronoi_plot_2d as scipyVoronoiPlot2D
-
 # for singular spectrum analysis
-from sklearn.decomposition import PCA as sklearnPCA
 import scipy.linalg as linalg
-import scipy.stats as stats
 
 
-def find_circles_thres(current_frame_gray, num_of_rafts, radii_Hough=[17, 19],
-                       thres_value=70, sigma_Canny=1.0, low_threshold_canny=25, high_threshold_canny=127,
+def find_circles_thres(current_frame_gray, num_of_rafts, radii_hough=[17, 19],
+                       thres_value=70, sigma_canny=1.0, low_threshold_canny=25, high_threshold_canny=127,
                        min_sep_dist=20, raft_center_threshold=60,
-                       topLeft_x=390, topLeft_y=450, width_x=850, height_y=850):
+                       top_left_x=390, top_left_y=450, width_x=850, height_y=850):
     """
     find the centers of each raft
     :param current_frame_gray: image in grayscale
     :param num_of_rafts:
-    :param radii_Hough: the range of Hough radii
+    :param radii_hough: the range of Hough radii
     :param thres_value: threshold value
-    :param sigma_Canny:
+    :param sigma_canny:
     :param low_threshold_canny:
     :param high_threshold_canny:
     :param min_sep_dist:
     :param raft_center_threshold:
-    :param topLeft_x:
-    :param topLeft_y:
+    :param top_left_x:
+    :param top_left_y:
     :param width_x:
     :param height_y:
     :return: raft_centers, raft_radii, raft_count
@@ -43,18 +36,18 @@ def find_circles_thres(current_frame_gray, num_of_rafts, radii_Hough=[17, 19],
     raft_radii = np.zeros(num_of_rafts, dtype=int)
 
     # crop the image
-    image_cropped = current_frame_gray[topLeft_y: topLeft_y + height_y, topLeft_x: topLeft_x + width_x]
+    image_cropped = current_frame_gray[top_left_y: top_left_y + height_y, top_left_x: top_left_x + width_x]
 
     # threshold the image
     retval, image_thres = cv.threshold(image_cropped, thres_value, 255, 0)
 
     # find edges
-    image_edges = canny(image_thres, sigma=sigma_Canny, low_threshold=low_threshold_canny,
+    image_edges = canny(image_thres, sigma=sigma_canny, low_threshold=low_threshold_canny,
                         high_threshold=high_threshold_canny)
 
     # use Hough transform to find circles
-    hough_results = hough_circle(image_edges, np.arange(*radii_Hough))
-    accums, cx, cy, radii = hough_circle_peaks(hough_results, np.arange(*radii_Hough))
+    hough_results = hough_circle(image_edges, np.arange(*radii_hough))
+    accums, cx, cy, radii = hough_circle_peaks(hough_results, np.arange(*radii_hough))
 
     # assuming that the first raft (highest accumulator score) is a good one
     #    raft_centers[0,0] = cx[0]
@@ -89,16 +82,16 @@ def find_circles_thres(current_frame_gray, num_of_rafts, radii_Hough=[17, 19],
             break
 
     # convert the xy coordinates of the cropped image into the coordinates of the original image
-    raft_centers[:, 0] = raft_centers[:, 0] + topLeft_x
-    raft_centers[:, 1] = raft_centers[:, 1] + topLeft_y
+    raft_centers[:, 0] = raft_centers[:, 0] + top_left_x
+    raft_centers[:, 1] = raft_centers[:, 1] + top_left_y
 
     return raft_centers, raft_radii, raft_count
 
 
-def find_circles_adaptive(current_frame_gray, num_of_rafts, radii_hough=[17, 19],
+def find_circles_adaptive(current_frame_gray, num_of_rafts, radii_hough,
                           adaptive_thres_blocksize=9, adaptive_thres_const=-20,
                           min_sep_dist=20, raft_center_threshold=60,
-                          topLeft_x=390, topLeft_y=450, width_x=850, height_y=850):
+                          top_left_x=390, top_left_y=450, width_x=850, height_y=850):
     """
     find the centers of each raft
     :param current_frame_gray:
@@ -108,8 +101,8 @@ def find_circles_adaptive(current_frame_gray, num_of_rafts, radii_hough=[17, 19]
     :param adaptive_thres_const:
     :param min_sep_dist:
     :param raft_center_threshold:
-    :param topLeft_x:
-    :param topLeft_y:
+    :param top_left_x:
+    :param top_left_y:
     :param width_x:
     :param height_y:
     :return: raft_centers, raft_radii, raft_count
@@ -120,7 +113,7 @@ def find_circles_adaptive(current_frame_gray, num_of_rafts, radii_hough=[17, 19]
     raft_radii = np.zeros(num_of_rafts, dtype=int)
 
     # crop the image
-    image_cropped = current_frame_gray[topLeft_y: topLeft_y + height_y, topLeft_x: topLeft_x + width_x]
+    image_cropped = current_frame_gray[top_left_y: top_left_y + height_y, top_left_x: top_left_x + width_x]
 
     # threshold the image
     image_thres = cv.adaptiveThreshold(image_cropped, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY,
@@ -142,7 +135,7 @@ def find_circles_adaptive(current_frame_gray, num_of_rafts, radii_hough=[17, 19]
         if image_cropped[detected_cy, detected_cx] < raft_center_threshold:
             new_raft = 0
         elif image_cropped[detected_cy - detected_radius // 2: detected_cy + detected_radius // 2,
-             detected_cx - detected_radius // 2:detected_cx + detected_radius // 2].mean() \
+                           detected_cx - detected_radius // 2:detected_cx + detected_radius // 2].mean() \
                 < raft_center_threshold:
             new_raft = 0
         #        elif  (detected_cx - width_x/2)**2 +  (detected_cy - height_y/2)**2 > lookup_radius**2:
@@ -164,13 +157,13 @@ def find_circles_adaptive(current_frame_gray, num_of_rafts, radii_hough=[17, 19]
             break
 
     # convert the xy coordinates of the cropped image into the coordinates of the original image
-    raft_centers[:, 0] = raft_centers[:, 0] + topLeft_x
-    raft_centers[:, 1] = raft_centers[:, 1] + topLeft_y
+    raft_centers[:, 0] = raft_centers[:, 0] + top_left_x
+    raft_centers[:, 1] = raft_centers[:, 1] + top_left_y
 
     return raft_centers, raft_radii, raft_count
 
 
-def find_and_sort_circles(image_gray, num_of_rafts, prev_pos, radii_Hough=[30, 40], thres_value=30, sigma_Canny=1.0,
+def find_and_sort_circles(image_gray, num_of_rafts, prev_pos, radii_hough, thres_value=30, sigma_Canny=1.0,
                           low_threshold_canny=25, high_threshold_canny=127, max_displ=50):
     """
     For each raft detected in the prev_pos, go through the newly found circles in descending order of scores,
@@ -179,7 +172,7 @@ def find_and_sort_circles(image_gray, num_of_rafts, prev_pos, radii_Hough=[30, 4
     :param image_gray: gray scale image
     :param num_of_rafts: number of rafts to be located
     :param prev_pos: previous positions of rafts
-    :param radii_Hough: [starting radius, ending radius], to be unpacked as an argument for hough_circle
+    :param radii_hough: [starting radius, ending radius], to be unpacked as an argument for hough_circle
     :param thres_value:
     :param sigma_Canny: the width of the Gaussian filter for Canny edge detection
     :param low_threshold_canny: low threshold for Canny
@@ -200,8 +193,8 @@ def find_and_sort_circles(image_gray, num_of_rafts, prev_pos, radii_Hough=[30, 4
     # use canny and then Hough transform to find circles
     image_edges = canny(image_thres, sigma=sigma_Canny, low_threshold=low_threshold_canny,
                         high_threshold=high_threshold_canny)
-    hough_results = hough_circle(image_edges, np.arange(*radii_Hough))
-    accums, cx, cy, radii = hough_circle_peaks(hough_results, np.arange(*radii_Hough))
+    hough_results = hough_circle(image_edges, np.arange(*radii_hough))
+    accums, cx, cy, radii = hough_circle_peaks(hough_results, np.arange(*radii_hough))
 
     raft_count = 0
     for raftID in np.arange(num_of_rafts):
@@ -422,26 +415,25 @@ def get_rotation_angle(prev_image, curr_image, size_of_cropped_image):
     :param prev_image:
     :param size_of_cropped_image:
     """
-
     max_value = np.amax(prev_image)
 
     if prev_image.dtype == 'float' and max_value <= 1:
-        img1 = np.uint8(prev_image * 255)
-        img2 = np.uint8(curr_image * 255)
+        prev_image = np.uint8(prev_image * 255)
+        curr_image = np.uint8(curr_image * 255)
 
     if prev_image.dtype == 'float' and max_value > 1:
-        img1 = np.uint8(prev_image)
-        img2 = np.uint8(curr_image)
+        prev_image = np.uint8(prev_image)
+        curr_image = np.uint8(curr_image)
 
-    img1 = cv.equalizeHist(img1)
-    img2 = cv.equalizeHist(img2)
+    prev_image = cv.equalizeHist(prev_image)
+    curr_image = cv.equalizeHist(curr_image)
 
     # Initiate ORB detector
     orb = cv.ORB_create(nfeatures=200)
 
     # find the keypoints and descriptors with ORB
-    kp1, des1 = orb.detectAndCompute(img1, None)
-    kp2, des2 = orb.detectAndCompute(img2, None)
+    kp1, des1 = orb.detectAndCompute(prev_image, None)
+    kp2, des2 = orb.detectAndCompute(curr_image, None)
 
     # do feature matching
     bf = cv.BFMatcher(cv.NORM_HAMMING, crossCheck=True)
@@ -488,7 +480,7 @@ def draw_rafts(img_bgr, rafts_loc, rafts_radii, num_of_rafts):
 
 def draw_raft_orientations(img_bgr, rafts_loc, rafts_ori, rafts_radii, num_of_rafts):
     """
-    draw lines to indicte the orientation of each raft
+    draw lines to indicate the orientation of each raft
     """
 
     line_thickness = int(2)
@@ -663,8 +655,8 @@ def shannon_entropy(c):
 
     c_normalized = c / float(np.sum(c))
     c_normalized_nonzero = c_normalized[np.nonzero(c_normalized)]  # gives 1D array
-    H = -sum(c_normalized_nonzero * np.log2(c_normalized_nonzero))  # unit in bits
-    return H
+    entropy = -sum(c_normalized_nonzero * np.log2(c_normalized_nonzero))  # unit in bits
+    return entropy
 
 
 def fft_distances(sampling_rate, distances):
@@ -676,13 +668,13 @@ def fft_distances(sampling_rate, distances):
     #    sampling_interval = 1/sampling_rate # unit s
     #    times = np.linspace(0,sampling_length*sampling_interval, sampling_length)
     sampling_length = len(distances)  # total number of frames
-    fft_distances = np.fft.fft(distances)
-    P2 = np.abs(fft_distances / sampling_length)
-    P1 = P2[0:int(sampling_length / 2) + 1]
-    P1[1:-1] = 2 * P1[1:-1]  # one-sided powr spectrum
+    fft_dist = np.fft.fft(distances)
+    p2 = np.abs(fft_dist / sampling_length)
+    p1 = p2[0:int(sampling_length / 2) + 1]
+    p1[1:-1] = 2 * p1[1:-1]  # one-sided power spectrum
     frequencies = sampling_rate / sampling_length * np.arange(0, int(sampling_length / 2) + 1)
 
-    return frequencies, P1
+    return frequencies, p1
 
 
 def draw_clusters(img_bgr, connectivity_matrix, rafts_loc):
@@ -692,9 +684,9 @@ def draw_clusters(img_bgr, connectivity_matrix, rafts_loc):
     line_thickness = 2
     line_color = (0, 255, 0)
     output_img = img_bgr
-    raftAs, raftBs = np.nonzero(connectivity_matrix)
+    raft1s, raft2s = np.nonzero(connectivity_matrix)
 
-    for raftA, raftB in zip(raftAs, raftBs):
+    for raftA, raftB in zip(raft1s, raft2s):
         output_img = cv.line(output_img, (rafts_loc[raftA, 0], rafts_loc[raftA, 1]),
                              (rafts_loc[raftB, 0], rafts_loc[raftB, 1]), line_color, line_thickness)
 
@@ -843,7 +835,8 @@ def ssa_reconstruct(pc, v, k):
     :param k: vector with the indices of the components to be reconstructed
     :return: the reconstructed time series
     """
-    if np.isscalar(k): k = [k]
+    if np.isscalar(k):
+        k = [k]
 
     if pc.ndim != 2:
         raise ValueError('pc must be a 2-dimensional matrix')

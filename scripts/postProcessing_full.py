@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 """ 
-@author: wwang 
-
 postprocessing script for spinning-rafts system
 
 Sections:
@@ -15,21 +13,13 @@ Sections:
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import time
-import cv2 as cv
-
-
 import scipy.io
-from scipy.io import loadmat
-from sklearn.metrics import mutual_info_score
 from scipy.spatial import distance as scipy_distance
 from scipy.spatial import Voronoi as ScipyVoronoi
-
 import progressbar
 import os
 import glob
 import shelve
-
 import scripts.functions_spinning_rafts as fsr
 
 
@@ -281,19 +271,19 @@ for dataID in range(2, len(dataFileListExcludingPostProcessed)):
                     A = any(raftA in raft for raft in raftsInClusters)
                     B = any(raftB in raft for raft in raftsInClusters)
                     # if both are new, then it is a new cluster
-                    if (A == False) and (B == False):
+                    if (A is False) and (B is False):
                         clusters[raftA, 0, frameNum] = clusterNum
                         clusters[raftB, 0, frameNum] = clusterNum
                         clusterNum += 1
                     # if one of them is new, then it is an old cluster
-                    if (A == True) and (B == False):
+                    if (A is True) and (B is False):
                         clusters[raftB, 0, frameNum] = clusters[raftA, 0, frameNum]
-                    if (A == False) and (B == True):
+                    if (A is False) and (B is True):
                         clusters[raftA, 0, frameNum] = clusters[raftB, 0, frameNum]
                     # if neither is new and if their cluster numbers differ,
                     # then change the larger cluster number to the smaller one
                     # note that this could lead to a cluster number being jumped over
-                    if (A == True) and (B == True) and (clusters[raftA, 0, frameNum] != clusters[raftB, 0, frameNum]):
+                    if (A is True) and (B is True) and (clusters[raftA, 0, frameNum] != clusters[raftB, 0, frameNum]):
                         clusterNumLarge = max(clusters[raftA, 0, frameNum], clusters[raftB, 0, frameNum])
                         clusterNumSmall = min(clusters[raftA, 0, frameNum], clusters[raftB, 0, frameNum])
                         clusters[clusters[:, 0, frameNum] == clusterNumLarge, 0, frameNum] = clusterNumSmall
@@ -369,20 +359,20 @@ for dataID in range(2, len(dataFileListExcludingPostProcessed)):
             tetraticOrderParameterModuliiAvgs = np.zeros(numOfFrames)
             tetraticOrderParameterModuliiStds = np.zeros(numOfFrames)
 
-            radialDistributionFunction = np.zeros(
-                (numOfFrames, len(radialRangeArray)))  # pair correlation function: g(r)
-            spatialCorrHexaOrderPara = np.zeros(
-                (numOfFrames, len(radialRangeArray)))  # spatial correlation of hexatic order paramter: g6(r)
-            spatialCorrPentaOrderPara = np.zeros(
-                (numOfFrames, len(radialRangeArray)))  # spatial correlation of pentatic order paramter: g5(r)
-            spatialCorrTetraOrderPara = np.zeros(
-                (numOfFrames, len(radialRangeArray)))  # spatial correlation of tetratic order paramter: g4(r)
-            spatialCorrHexaBondOrientationOrder = np.zeros(
-                (numOfFrames, len(radialRangeArray)))  # spatial correlation of bond orientation parameter: g6(r)/g(r)
-            spatialCorrPentaBondOrientationOrder = np.zeros(
-                (numOfFrames, len(radialRangeArray)))  # spatial correlation of bond orientation parameter: g5(r)/g(r)
-            spatialCorrTetraBondOrientationOrder = np.zeros(
-                (numOfFrames, len(radialRangeArray)))  # spatial correlation of bond orientation parameter: g4(r)/g(r)
+            radialDistributionFunction = np.zeros((numOfFrames, len(radialRangeArray)))
+            # pair correlation function: g(r)
+            spatialCorrHexaOrderPara = np.zeros((numOfFrames, len(radialRangeArray)))
+            # spatial correlation of hexatic order paramter: g6(r)
+            spatialCorrPentaOrderPara = np.zeros((numOfFrames, len(radialRangeArray)))
+            # spatial correlation of pentatic order paramter: g5(r)
+            spatialCorrTetraOrderPara = np.zeros((numOfFrames, len(radialRangeArray)))
+            # spatial correlation of tetratic order paramter: g4(r)
+            spatialCorrHexaBondOrientationOrder = np.zeros((numOfFrames, len(radialRangeArray)))
+            # spatial correlation of bond orientation parameter: g6(r)/g(r)
+            spatialCorrPentaBondOrientationOrder = np.zeros((numOfFrames, len(radialRangeArray)))
+            # spatial correlation of bond orientation parameter: g5(r)/g(r)
+            spatialCorrTetraBondOrientationOrder = np.zeros((numOfFrames, len(radialRangeArray)))
+            # spatial correlation of bond orientation parameter: g4(r)/g(r)
 
             spatialCorrPos = np.zeros((numOfFrames, len(radialRangeArray)))  # spatial correlation of positions: gG(r)
 

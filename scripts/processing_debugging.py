@@ -174,13 +174,13 @@ print(error_message)
 print(raft_count)
 
 # FindCircles function
-raft_centers, raft_radii, raft_count = fsr.find_circles_thres(currentFrameGray, num_of_rafts, radii_Hough=radii_Hough,
-                                                              thres_value=thres_value, sigma_Canny=sigma_Canny,
+raft_centers, raft_radii, raft_count = fsr.find_circles_thres(currentFrameGray, num_of_rafts, radii_hough=radii_Hough,
+                                                              thres_value=thres_value, sigma_canny=sigma_Canny,
                                                               low_threshold_canny=low_threshold_canny,
                                                               high_threshold_canny=high_threshold_canny,
                                                               min_sep_dist=min_sep_dist,
                                                               raft_center_threshold=raft_center_threshold,
-                                                              topLeft_x=topLeft_x, topLeft_y=topLeft_y, width_x=width_x,
+                                                              top_left_x=topLeft_x, top_left_y=topLeft_y, width_x=width_x,
                                                               height_y=height_y)
 print(raft_count)
 
@@ -191,7 +191,7 @@ raft_centers, raft_radii, raft_count = fsr.find_circles_adaptive(currentFrameGra
                                                                  adaptive_thres_const=adaptiveThres_const,
                                                                  min_sep_dist=min_sep_dist,
                                                                  raft_center_threshold=raft_center_threshold,
-                                                                 topLeft_x=topLeft_x, topLeft_y=topLeft_y,
+                                                                 top_left_x=topLeft_x, top_left_y=topLeft_y,
                                                                  width_x=width_x, height_y=height_y)
 print(raft_count)
 # below is for FindAndSortCircles, after using FindCircles to get the first centers
@@ -204,7 +204,7 @@ currentFrameGrayContAdj = cv.equalizeHist(currentFrameGray)
 plt.imshow(currentFrameGray, 'gray')
 
 raft_centers, raft_radii, raft_count = fsr.find_and_sort_circles(currentFrameGray, num_of_rafts, prev_pos=prev_pos,
-                                                                 radii_Hough=radii_Hough, thres_value=thres_value,
+                                                                 radii_hough=radii_Hough, thres_value=thres_value,
                                                                  sigma_Canny=sigma_Canny,
                                                                  low_threshold_canny=low_threshold_canny,
                                                                  high_threshold_canny=high_threshold_canny,
@@ -275,7 +275,7 @@ raft_centers_1, raft_radii_1, raft_count_1 = fsr.find_circles_adaptive(frame1Gra
                                                                        adaptive_thres_const=adaptiveThres_const,
                                                                        min_sep_dist=min_sep_dist,
                                                                        raft_center_threshold=raft_center_threshold,
-                                                                       topLeft_x=topLeft_x, topLeft_y=topLeft_y,
+                                                                       top_left_x=topLeft_x, top_left_y=topLeft_y,
                                                                        width_x=width_x, height_y=height_y)
 print(raft_count_1)
 
@@ -285,7 +285,7 @@ raft_centers_2, raft_radii_2, raft_count_2 = fsr.find_circles_adaptive(frame2Gra
                                                                        adaptive_thres_const=adaptiveThres_const,
                                                                        min_sep_dist=min_sep_dist,
                                                                        raft_center_threshold=raft_center_threshold,
-                                                                       topLeft_x=topLeft_x, topLeft_y=topLeft_y,
+                                                                       top_left_x=topLeft_x, top_left_y=topLeft_y,
                                                                        width_x=width_x, height_y=height_y)
 print(raft_count_2)
 
@@ -342,26 +342,25 @@ def get_rotation_angle(prev_image, curr_image):
     """
     extract the angle of rotation theta between two frames
     """
-
     max_value = np.amax(prev_image)
 
     if prev_image.dtype == 'float' and max_value <= 1:
-        img1 = np.uint8(prev_image * 255)
-        img2 = np.uint8(curr_image * 255)
+        prev_image = np.uint8(prev_image * 255)
+        curr_image = np.uint8(curr_image * 255)
 
     if prev_image.dtype == 'float' and max_value > 1:
-        img1 = np.uint8(prev_image)
-        img2 = np.uint8(curr_image)
+        prev_image = np.uint8(prev_image)
+        curr_image = np.uint8(curr_image)
 
-    img1 = cv.equalizeHist(img1)
-    img2 = cv.equalizeHist(img2)
+    prev_image = cv.equalizeHist(prev_image)
+    curr_image = cv.equalizeHist(curr_image)
 
     # Initiate ORB detector
     orb = cv.ORB_create(nfeatures=20)
 
     # find the keypoints and descriptors with ORB
-    kp1, des1 = orb.detectAndCompute(img1, None)
-    kp2, des2 = orb.detectAndCompute(img2, None)
+    kp1, des1 = orb.detectAndCompute(prev_image, None)
+    kp2, des2 = orb.detectAndCompute(curr_image, None)
 
     # do feature matching
     bf = cv.BFMatcher(cv.NORM_HAMMING, crossCheck=True)
@@ -494,7 +493,7 @@ raft_centers_1, raft_radii_1, raft_count_1 = \
                               adaptive_thres_blocksize=adaptiveThres_blocksize,
                               adaptive_thres_const=adaptiveThres_const,
                               min_sep_dist=min_sep_dist, raft_center_threshold=raft_center_threshold,
-                              topLeft_x=topLeft_x, topLeft_y=topLeft_y, width_x=width_x, height_y=height_y)
+                              top_left_x=topLeft_x, top_left_y=topLeft_y, width_x=width_x, height_y=height_y)
 print(raft_count_1)
 
 raft_centers_2, raft_radii_2, raft_count_2 = \
@@ -503,7 +502,7 @@ raft_centers_2, raft_radii_2, raft_count_2 = \
                               adaptive_thres_const=adaptiveThres_const,
                               min_sep_dist=min_sep_dist,
                               raft_center_threshold=raft_center_threshold,
-                              topLeft_x=topLeft_x, topLeft_y=topLeft_y, width_x=width_x, height_y=height_y)
+                              top_left_x=topLeft_x, top_left_y=topLeft_y, width_x=width_x, height_y=height_y)
 print(raft_count_2)
 
 # initialize key varialbes
@@ -650,13 +649,13 @@ curr_centers_tracked = np.zeros((num_of_rafts, 2), dtype=int)
 curr_radii_tracked = np.zeros(num_of_rafts, dtype=int)
 
 # FindCircles in the previous frame
-prev_centers, prev_radii, prev_count = fsr.find_circles_thres(prevFrameGray, num_of_rafts, radii_Hough=radii_Hough,
-                                                              thres_value=thres_value, sigma_Canny=sigma_Canny,
+prev_centers, prev_radii, prev_count = fsr.find_circles_thres(prevFrameGray, num_of_rafts, radii_hough=radii_Hough,
+                                                              thres_value=thres_value, sigma_canny=sigma_Canny,
                                                               low_threshold_canny=low_threshold_canny,
                                                               high_threshold_canny=high_threshold_canny,
                                                               min_sep_dist=min_sep_dist,
                                                               raft_center_threshold=raft_center_threshold,
-                                                              topLeft_x=topLeft_x, topLeft_y=topLeft_y, width_x=width_x,
+                                                              top_left_x=topLeft_x, top_left_y=topLeft_y, width_x=width_x,
                                                               height_y=height_y)
 # FindCircles in the current frame
 curr_centers, curr_radii, curr_count = fsr.find_circles_adaptive(currFrameGray, num_of_rafts, radii_hough=radii_Hough,
@@ -664,7 +663,7 @@ curr_centers, curr_radii, curr_count = fsr.find_circles_adaptive(currFrameGray, 
                                                                  adaptive_thres_const=adaptiveThres_const,
                                                                  min_sep_dist=min_sep_dist,
                                                                  raft_center_threshold=raft_center_threshold,
-                                                                 topLeft_x=topLeft_x, topLeft_y=topLeft_y,
+                                                                 top_left_x=topLeft_x, top_left_y=topLeft_y,
                                                                  width_x=width_x, height_y=height_y)
 
 boudnary_x = topLeft_x + width_x // 2
