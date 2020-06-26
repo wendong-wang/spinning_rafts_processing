@@ -15,19 +15,15 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import time
 import cv2 as cv
-
-
 import scipy.io
 from scipy.io import loadmat
 from sklearn.metrics import mutual_info_score
 from scipy.spatial import distance as scipy_distance
 from scipy.spatial import Voronoi as ScipyVoronoi
-
 import progressbar
 import os
 import glob
 import shelve
-
 import scripts.functions_spinning_rafts as fsr
 
 rootFolderNameFromWindows = r'D:\\VideoProcessingFolder'  # r'E:\Data_Camera_Basler_acA800-510uc_coilSystem'
