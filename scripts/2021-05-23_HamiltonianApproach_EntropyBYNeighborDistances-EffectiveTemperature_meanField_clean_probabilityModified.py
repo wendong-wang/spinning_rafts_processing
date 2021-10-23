@@ -286,11 +286,11 @@ E_total = E_cap_AA[0:cuttOff_distance] + 0.5*E_magdp_AA[0:cuttOff_distance]
 #%% Boundary energy calculation
 
 Boundary_Energy_Hydro = np.zeros((len(Hydrodynamics_EEDistances), numOfBatches))  # unit: J
-p_r_uniform = np.zeros((cuttOff_distance, len(mainDataList_experiments))) # uniform porbability distribution
+p_r_uniform = np.zeros((cuttOff_distance, len(mainDataList_experiments)))  # uniform porbability distribution
 
 r_thresh = 50*radiusOfRaft # fixing r_thresh as arena size # unit m
 
-for dataID_experiments in progressbar.progressbar(range(1,len(mainDataList_experiments))) :
+for dataID_experiments in progressbar.progressbar(range(1, len(mainDataList_experiments))) :
     for index, d in enumerate(Hydrodynamics_CCDistances[:cuttOff_distance]): 
         stepsize = 1
         range_r = range(int(3*d*1e6/2), int(r_thresh*1e6), stepsize)
@@ -306,7 +306,7 @@ for dataID_experiments in progressbar.progressbar(range(1,len(mainDataList_exper
             energy_term += -2*(E_cap_AA[int(r_prime[j] - 300)] \
                             + E_magdp_AA[int(r_prime[j] - 300)] + \
                             + HydrodynamicsLift_Energy[int(r_prime[j] - 300), dataID_experiments]) \
-                            *r_prime[j]
+                            * r_prime[j]
             
         # uniform porbability density normalized # unit unit less (constant probability density for homoenous distributions of disks)
         p_r_uniform[index, dataID_experiments] = 1e6/r_prime.sum()
